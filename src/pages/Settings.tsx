@@ -20,17 +20,17 @@ import { useApp } from "../lib/store";
 import { supabase } from "../lib/supabase";
 import { Card, Button, Badge, Avatar, colorTokens } from "../components/ui";
 
-type Tab = "uploads" | "classes" | "goals" | "profile";
+type Tab = "profile" | "uploads" | "classes" | "goals";
 
 const tabs: { id: Tab; label: string; icon: typeof UploadCloud }[] = [
+  { id: "profile", label: "Profile & preferences", icon: UserCog },
   { id: "uploads", label: "Uploads", icon: UploadCloud },
   { id: "classes", label: "Classes & students", icon: Users },
   { id: "goals", label: "Class goals", icon: Target },
-  { id: "profile", label: "Profile & preferences", icon: UserCog },
 ];
 
 export function Settings() {
-  const [tab, setTab] = useState<Tab>("timetable");
+  const [tab, setTab] = useState<Tab>("profile");
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[240px_1fr]">
