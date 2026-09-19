@@ -7,6 +7,7 @@ import {
   timetable,
   classHistory,
 } from "./mockData";
+import { supabase } from "./supabase";
 
 export interface ScratchBoard {
   id: string;
@@ -71,6 +72,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [scratchBoards, setScratchBoards] = useState<ScratchBoard[]>([
     { id: "sb1", name: "Scratch board", widgets: [], bgUrl: null },
   ]);
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -80,6 +82,52 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     window.localStorage.setItem("homeroom-isAuthed", isAuthed.toString());
   }, [isAuthed]);
+
+  useEffect(() => {
+    if (!isAuthed) return;
+    loadDataFromSupabase();
+  }, [isAuthed]);
+
+  const loadDataFromSupabase = async () => {
+    try {
+      setIsLoading(true);
+      const [{ data: classesData }, { data: studentsData }] = await Promise.all([
+        supabase.from("classes").select("*"),
+        supabase.from("students").select("*"),
+      ]);
+
+      if (classesData?.length) {
+        setClassesState(
+          classesData.map((c: any) => ({
+            id: c.id,
+            name: c.name,
+            subject: c.subject,
+            grade: Number(c.name.match(/\d+/)?.[0]) || 7,
+            color: c.color,
+            points: c.points || 0,
+            goal: c.goal || 480,
+          }))
+        );
+      }
+
+      if (studentsData?.length) {
+        setStudentsState(
+          studentsData.map((s: any) => ({
+            id: s.id,
+            classId: s.class_id,
+            name: s.name,
+            points: 0,
+            streak: 0,
+            weeklyChange: 0,
+          }))
+        );
+      }
+    } catch (error) {
+      console.error("Failed to load data from Supabase:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const value = useMemo<AppState>(
     () => ({
@@ -99,10 +147,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
       timetable,
       classHistory,
 
-      awardClassPoints: (classId, delta) =>
+      awardClassPoints: async (classId, delta) => {
         setClassesState((cs) =>
           cs.map((c) => (c.id === classId ? { ...c, points: Math.max(0, c.points + delta) } : c))
-        ),
+        );
+
+        try {
+          const cls = classesState.find((c) => c.id === classId);
+          if (cls) {
+            await supabase.from("classes").update({ points: Math.max(0, cls.points + delta) }).eq("id", classId);
+          }
+        } catch (error) {
+          console.error("Failed to award points:", error);
+        }
+      },
       awardStudentPoints: (studentId, delta) => {
         const s = studentsState.find((st) => st.id === studentId);
         setStudentsState((ss) =>
@@ -116,19 +174,45 @@ export function AppProvider({ children }: { children: ReactNode }) {
       },
       setClassGoal: (classId, goal) =>
         setClassesState((cs) => cs.map((c) => (c.id === classId ? { ...c, goal } : c))),
-      addClass: (name, subject) =>
-        setClassesState((cs) => [
-          ...cs,
-          { id: `c${Date.now()}`, name, grade: Number(name.match(/\d+/)?.[0]) || 7, subject, color: "orange", goal: 500, points: 0 },
-        ]),
+      addClass: async (name, subject) => {
+        const classId = `c${Date.now()}`;
+        const newClass = { id: classId, name, grade: Number(name.match(/\d+/)?.[0]) || 7, subject, color: "orange", goal: 500, points: 0 };
+        setClassesState((cs) => [...cs, newClass]);
+
+        try {
+          await supabase.from("classes").insert({
+            id: classId,
+            name,
+            subject,
+            color: "orange",
+            goal: 500,
+            points: 0,
+          });
+        } catch (error) {
+          console.error("Failed to add class:", error);
+        }
+      },
       renameClass: (classId, name) =>
         setClassesState((cs) => cs.map((c) => (c.id === classId ? { ...c, name } : c))),
       deleteClass: (classId) => {
         setClassesState((cs) => cs.filter((c) => c.id !== classId));
         setStudentsState((ss) => ss.filter((s) => s.classId !== classId));
       },
-      addStudent: (classId, name) =>
-        setStudentsState((ss) => [...ss, { id: `s${Date.now()}`, classId, name, points: 0, streak: 0, weeklyChange: 0 }]),
+      addStudent: async (classId, name) => {
+        const studentId = `s${Date.now()}`;
+        const newStudent = { id: studentId, classId, name, points: 0, streak: 0, weeklyChange: 0 };
+        setStudentsState((ss) => [...ss, newStudent]);
+
+        try {
+          await supabase.from("students").insert({
+            id: studentId,
+            class_id: classId,
+            name,
+          });
+        } catch (error) {
+          console.error("Failed to add student:", error);
+        }
+      },
       renameStudent: (studentId, name) =>
         setStudentsState((ss) => ss.map((s) => (s.id === studentId ? { ...s, name } : s))),
       removeStudent: (studentId) => setStudentsState((ss) => ss.filter((s) => s.id !== studentId)),

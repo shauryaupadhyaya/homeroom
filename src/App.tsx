@@ -14,6 +14,8 @@ import { Lesson } from "./pages/Lesson";
 import { LessonSummary } from "./pages/LessonSummary";
 import { StudentProfile } from "./pages/StudentProfile";
 import { Whiteboard } from "./pages/Whiteboard";
+import { SyllabusUpload } from "./pages/SyllabusUpload";
+import { TimetableGenerator } from "./pages/TimetableGenerator";
 
 function AppLayout() {
   const { isAuthed } = useApp();
@@ -47,6 +49,8 @@ export default function App() {
         <Route path="/attendance" element={<Attendance />} />
         <Route path="/assessments" element={<Assessments />} />
         <Route path="/syllabus" element={<Syllabus />} />
+        <Route path="/syllabus-upload" element={<SyllabusUpload />} />
+        <Route path="/timetable-generator" element={<TimetableGenerator />} />
         <Route path="/lesson-history" element={<LessonHistory />} />
         <Route path="/student-progress" element={<StudentProgress />} />
         <Route path="/analytics" element={<Analytics />} />
