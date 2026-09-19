@@ -139,30 +139,30 @@ export function Attendance() {
                     <div className="flex gap-2">
                       <button
                         onClick={() => updateAttendance(student.id, "present")}
-                        className={`rounded px-2 py-1 text-xs font-bold transition-colors ${
+                        className={`rounded px-3 py-1.5 text-xs font-bold transition-colors ${
                           record?.status === "present"
-                            ? "bg-(--color-success) text-white"
-                            : "border border-(--color-border) text-(--color-ink-muted) hover:bg-(--color-paper-dim)"
+                            ? "bg-(--color-success) text-white shadow-hard-sm"
+                            : "border-2 border-(--color-success) text-(--color-success) bg-(--color-success-100) hover:bg-(--color-success) hover:text-white"
                         }`}
                       >
                         P
                       </button>
                       <button
                         onClick={() => updateAttendance(student.id, "absent")}
-                        className={`rounded px-2 py-1 text-xs font-bold transition-colors ${
+                        className={`rounded px-3 py-1.5 text-xs font-bold transition-colors ${
                           record?.status === "absent"
-                            ? "bg-(--color-danger) text-white"
-                            : "border border-(--color-border) text-(--color-ink-muted) hover:bg-(--color-paper-dim)"
+                            ? "bg-(--color-danger) text-white shadow-hard-sm"
+                            : "border-2 border-(--color-danger) text-(--color-danger) bg-(--color-danger-100) hover:bg-(--color-danger) hover:text-white"
                         }`}
                       >
                         A
                       </button>
                       <button
                         onClick={() => updateAttendance(student.id, "late")}
-                        className={`rounded px-2 py-1 text-xs font-bold transition-colors ${
+                        className={`rounded px-3 py-1.5 text-xs font-bold transition-colors ${
                           record?.status === "late"
-                            ? "bg-(--color-warning) text-white"
-                            : "border border-(--color-border) text-(--color-ink-muted) hover:bg-(--color-paper-dim)"
+                            ? "bg-(--color-orange-500) text-white shadow-hard-sm"
+                            : "border-2 border-(--color-orange-500) text-(--color-orange-600) bg-(--color-orange-100) hover:bg-(--color-orange-500) hover:text-white"
                         }`}
                       >
                         L

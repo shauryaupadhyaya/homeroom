@@ -196,8 +196,9 @@ export function Settings() {
                 <Upload size={32} className="mx-auto mb-3 text-(--color-orange-500)" />
                 <p className="mb-2 font-bold text-(--color-ink)">Drop timetable file or click to select</p>
                 <p className="mb-4 text-xs text-(--color-ink-muted)">Formats: TXT, PDF, JPG, PNG</p>
-                <label>
+                <div className="inline-block">
                   <input
+                    id="timetable-input"
                     type="file"
                     accept=".txt,.pdf,.jpg,.jpeg,.png,.gif"
                     onChange={handleTimetableUpload}
@@ -205,13 +206,14 @@ export function Settings() {
                     className="hidden"
                   />
                   <Button
-                    as="span"
+                    as="label"
+                    htmlFor="timetable-input"
                     disabled={isUploading}
                     className="cursor-pointer"
                   >
                     {isUploading ? "Processing..." : "Select File"}
                   </Button>
-                </label>
+                </div>
                 <p className="mt-3 text-xs text-(--color-ink-muted)">Each line: Monday 09:00-10:00 C1</p>
               </div>
             </Card>
@@ -250,8 +252,9 @@ export function Settings() {
                 <FileText size={32} className="mx-auto mb-3 text-(--color-orange-500)" />
                 <p className="mb-2 font-bold text-(--color-ink)">Drop syllabus PDF or click to select</p>
                 <p className="mb-4 text-xs text-(--color-ink-muted)">Progress tracked for each class individually</p>
-                <label>
+                <div className="inline-block">
                   <input
+                    id="syllabus-input"
                     type="file"
                     accept=".pdf"
                     onChange={handleSyllabusUpload}
@@ -259,41 +262,51 @@ export function Settings() {
                     className="hidden"
                   />
                   <Button
-                    as="span"
+                    as="label"
+                    htmlFor="syllabus-input"
                     disabled={isUploading || selectedClassesForSyllabus.length === 0}
                     className="cursor-pointer"
                   >
                     {isUploading ? "Uploading..." : "Select PDF"}
                   </Button>
-                </label>
+                </div>
               </div>
             </Card>
           </>
         )}
 
         {tab === "classes" && (
-          <div className="space-y-4">
-            <h2 className="font-display text-2xl font-bold text-(--color-ink)">Classes & Students</h2>
+          <div className="space-y-6">
+            <div>
+              <h2 className="font-display text-2xl font-bold text-(--color-ink)">Classes & Students</h2>
+              <p className="mt-1 text-sm text-(--color-ink-muted)">Manage your classes and students</p>
+            </div>
             <Card>
-              <p className="text-(--color-ink-muted)">Manage your classes and students</p>
+              <p className="text-(--color-ink-muted)">Class management coming soon</p>
             </Card>
           </div>
         )}
 
         {tab === "goals" && (
-          <div className="space-y-4">
-            <h2 className="font-display text-2xl font-bold text-(--color-ink)">Class Goals</h2>
+          <div className="space-y-6">
+            <div>
+              <h2 className="font-display text-2xl font-bold text-(--color-ink)">Class Goals</h2>
+              <p className="mt-1 text-sm text-(--color-ink-muted)">Set and track class achievement goals</p>
+            </div>
             <Card>
-              <p className="text-(--color-ink-muted)">Set and track class achievement goals</p>
+              <p className="text-(--color-ink-muted)">Goal management coming soon</p>
             </Card>
           </div>
         )}
 
         {tab === "profile" && (
-          <div className="space-y-4">
-            <h2 className="font-display text-2xl font-bold text-(--color-ink)">Profile & Preferences</h2>
+          <div className="space-y-6">
+            <div>
+              <h2 className="font-display text-2xl font-bold text-(--color-ink)">Profile & Preferences</h2>
+              <p className="mt-1 text-sm text-(--color-ink-muted)">Manage your profile and preferences</p>
+            </div>
             <Card>
-              <p className="text-(--color-ink-muted)">Manage your profile and preferences</p>
+              <p className="text-(--color-ink-muted)">Profile settings coming soon</p>
             </Card>
           </div>
         )}
