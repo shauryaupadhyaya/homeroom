@@ -1,14 +1,108 @@
 import { useNavigate, useParams } from "react-router-dom";
-import { X, Clock3 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { X, Clock3, Check, ChevronDown } from "lucide-react";
 import { useApp } from "../lib/store";
 import { BoardProvider, useBoard } from "../whiteboard/BoardContext";
 import { widgetLiveValue } from "../whiteboard/widgets";
 import { Board } from "../whiteboard/Board";
 import { ProgressBar, colorTokens, EmptyState, Button } from "../components/ui";
 
-function LessonTopBar({ classId }: { classId: string }) {
+type AttendanceStatus = "present" | "absent" | "late";
+
+interface LessonSession {
+  classId: string;
+  startTime: Date;
+  endTime?: Date;
+  attendance: Record<string, AttendanceStatus>;
+  pointsAwarded: number;
+  widgets: string[];
+}
+
+function AttendancePanel({ classId }: { classId: string }) {
+  const { students } = useApp();
+  const [attendance, setAttendance] = useState<Record<string, AttendanceStatus>>({});
+  const [showPanel, setShowPanel] = useState(false);
+
+  const classStudents = students.filter((s) => s.classId === classId);
+  const markedCount = Object.keys(attendance).length;
+
+  useEffect(() => {
+    const key = `lesson-attendance-${classId}`;
+    setAttendance(JSON.parse(sessionStorage.getItem(key) || "{}"));
+  }, [classId]);
+
+  useEffect(() => {
+    sessionStorage.setItem(`lesson-attendance-${classId}`, JSON.stringify(attendance));
+  }, [attendance, classId]);
+
+  const updateAttendance = (studentId: string, status: AttendanceStatus) => {
+    setAttendance((prev) => ({ ...prev, [studentId]: status }));
+  };
+
+  return (
+    <div className="fixed bottom-6 right-6 z-50">
+      <button
+        onClick={() => setShowPanel(!showPanel)}
+        className="flex items-center gap-2 rounded-full border-2 border-(--color-border) bg-(--color-surface) px-4 py-2 font-bold shadow-hard"
+      >
+        <Check size={16} className="text-(--color-success)" />
+        {markedCount}/{classStudents.length}
+        <ChevronDown size={14} className={`transition-transform ${showPanel ? "rotate-180" : ""}`} />
+      </button>
+
+      {showPanel && (
+        <div className="absolute bottom-16 right-0 w-64 space-y-2 rounded-xl border-[3px] border-(--color-border) bg-(--color-surface) p-4 shadow-hard">
+          <h3 className="mb-3 font-bold text-(--color-ink)">Mark Attendance</h3>
+          <div className="max-h-96 space-y-1 overflow-y-auto">
+            {classStudents.map((student) => {
+              const status = attendance[student.id];
+              return (
+                <div key={student.id} className="flex items-center justify-between rounded-lg border border-(--color-border) bg-(--color-paper) px-3 py-2">
+                  <span className="text-sm font-medium text-(--color-ink)">{student.name}</span>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => updateAttendance(student.id, "present")}
+                      className={`rounded px-1.5 py-0.5 text-xs font-bold ${
+                        status === "present"
+                          ? "bg-(--color-success) text-white"
+                          : "border border-(--color-border) text-(--color-ink-muted) hover:bg-(--color-paper-dim)"
+                      }`}
+                    >
+                      P
+                    </button>
+                    <button
+                      onClick={() => updateAttendance(student.id, "absent")}
+                      className={`rounded px-1.5 py-0.5 text-xs font-bold ${
+                        status === "absent"
+                          ? "bg-(--color-danger) text-white"
+                          : "border border-(--color-border) text-(--color-ink-muted) hover:bg-(--color-paper-dim)"
+                      }`}
+                    >
+                      A
+                    </button>
+                    <button
+                      onClick={() => updateAttendance(student.id, "late")}
+                      className={`rounded px-1.5 py-0.5 text-xs font-bold ${
+                        status === "late"
+                          ? "bg-(--color-warning) text-white"
+                          : "border border-(--color-border) text-(--color-ink-muted) hover:bg-(--color-paper-dim)"
+                      }`}
+                    >
+                      L
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LessonTopBar({ classId, onEndLesson }: { classId: string; onEndLesson: () => void }) {
   const { classes } = useApp();
-  const navigate = useNavigate();
   const { widgets } = useBoard();
   const cls = classes.find((c) => c.id === classId)!;
   const t = colorTokens(cls.color);
@@ -17,7 +111,7 @@ function LessonTopBar({ classId }: { classId: string }) {
   return (
     <div className="flex h-16 shrink-0 items-center gap-4 border-b-[3px] border-(--color-border) bg-(--color-surface) px-4">
       <button
-        onClick={() => navigate("/")}
+        onClick={onEndLesson}
         className="flex items-center gap-1.5 rounded-lg border-2 border-(--color-border) bg-(--color-surface) px-3 py-1.5 text-sm font-bold text-(--color-danger) hover:bg-(--color-danger-100)"
       >
         <X size={15} />
@@ -49,21 +143,35 @@ function LessonTopBar({ classId }: { classId: string }) {
   );
 }
 
-export function Lesson() {
-  const { classId } = useParams<{ classId: string }>();
+function LessonContent({ classId, startTime }: { classId: string; startTime: Date }) {
   const { classes } = useApp();
   const navigate = useNavigate();
   const cls = classes.find((c) => c.id === classId);
 
+  const handleEndLesson = () => {
+    const attendance = JSON.parse(sessionStorage.getItem(`lesson-attendance-${classId}`) || "{}");
+    const widgets = JSON.parse(sessionStorage.getItem(`lesson-widgets-${classId}`) || "[]");
+
+    const session: LessonSession = {
+      classId,
+      startTime,
+      endTime: new Date(),
+      attendance,
+      pointsAwarded: cls?.points || 0,
+      widgets,
+    };
+
+    sessionStorage.setItem(`lesson-session-${classId}`, JSON.stringify(session));
+    navigate(`/lesson/${classId}/summary`);
+  };
+
   if (!cls) {
     return (
-      <div className="flex h-screen items-center justify-center bg-(--color-paper) p-8">
-        <EmptyState
-          title="This class doesn't exist"
-          body="It may have been deleted. Head back to the dashboard to start a different lesson."
-          action={<Button onClick={() => navigate("/")}>Back to Dashboard</Button>}
-        />
-      </div>
+      <EmptyState
+        title="This class doesn't exist"
+        body="It may have been deleted. Head back to the dashboard to start a different lesson."
+        action={<Button onClick={() => navigate("/")}>Back to Dashboard</Button>}
+      />
     );
   }
 
@@ -95,11 +203,36 @@ export function Lesson() {
       ]}
     >
       <div className="flex h-screen flex-col">
-        <LessonTopBar classId={cls.id} />
-        <div className="flex-1 overflow-hidden">
+        <LessonTopBar classId={cls.id} onEndLesson={handleEndLesson} />
+        <div className="relative flex-1 overflow-hidden">
           <Board classId={cls.id} />
+          <AttendancePanel classId={cls.id} />
         </div>
       </div>
     </BoardProvider>
   );
+}
+
+export function Lesson() {
+  const { classId } = useParams<{ classId: string }>();
+  const [startTime] = useState(new Date());
+
+  if (!classId) {
+    const navigate = useNavigate();
+    return (
+      <div className="flex h-screen items-center justify-center bg-(--color-paper) p-8">
+        <EmptyState
+          title="Invalid lesson"
+          body="No class ID found. Head back to the dashboard to start a lesson."
+          action={<Button onClick={() => navigate("/")}>Back to Dashboard</Button>}
+        />
+      </div>
+    );
+  }
+
+  useEffect(() => {
+    sessionStorage.setItem(`lesson-start-${classId}`, startTime.toISOString());
+  }, [classId, startTime]);
+
+  return <LessonContent classId={classId} startTime={startTime} />;
 }

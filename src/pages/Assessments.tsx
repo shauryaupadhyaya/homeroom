@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useApp } from "../lib/store";
-import { Card, Button, Badge, colorTokens } from "../components/ui";
+import { Card, Button, Badge } from "../components/ui";
 import { Plus, Edit2 } from "lucide-react";
 
 type AssessmentType = "test" | "exam" | "quiz" | "assignment" | "project";
@@ -24,7 +24,7 @@ interface StudentMark {
 export function Assessments() {
   const { classes, students } = useApp();
   const [selectedClassId, setSelectedClassId] = useState<string | null>(classes[0]?.id || null);
-  const [assessments, setAssessments] = useState<Assessment[]>([
+  const [assessments] = useState<Assessment[]>([
     {
       id: "a1",
       title: "Midterm Exam",

@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useApp } from "../lib/store";
-import { Card, Button, Badge, colorTokens } from "../components/ui";
+import { Card, Badge, colorTokens } from "../components/ui";
 import { Check, X, Clock } from "lucide-react";
 
 type AttendanceStatus = "present" | "absent" | "late" | "excused";

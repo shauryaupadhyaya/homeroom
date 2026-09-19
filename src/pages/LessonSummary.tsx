@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useApp } from "../lib/store";
-import { Card, Button, Badge, colorTokens } from "../components/ui";
+import { Card, Button, Badge } from "../components/ui";
 import { ArrowRight, Clock, Users } from "lucide-react";
 
 interface LessonSession {
@@ -51,8 +51,6 @@ export function LessonSummary() {
   const presentCount = Object.values(session.attendance).filter((s) => s === "present").length;
   const lateCount = Object.values(session.attendance).filter((s) => s === "late").length;
   const attendanceRate = classStudents.length > 0 ? Math.round(((presentCount + lateCount) / classStudents.length) * 100) : 0;
-
-  const classColor = colorTokens(selectedClass.color);
 
   return (
     <div className="min-h-screen bg-(--color-paper) px-6 py-8">
