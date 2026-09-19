@@ -9,6 +9,7 @@ import { Attendance } from "./pages/Attendance";
 import { Assessments } from "./pages/Assessments";
 import { Lesson } from "./pages/Lesson";
 import { LessonSummary } from "./pages/LessonSummary";
+import { StudentProfile } from "./pages/StudentProfile";
 import { Whiteboard } from "./pages/Whiteboard";
 
 function AppLayout() {
@@ -44,6 +45,7 @@ export default function App() {
         <Route path="/assessments" element={<Assessments />} />
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/student/:studentId" element={<StudentProfile />} />
       </Route>
 
       <Route element={<FullScreenGuard />}>

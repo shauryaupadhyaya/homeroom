@@ -62,30 +62,30 @@ function AttendancePanel({ classId }: { classId: string }) {
                   <div className="flex gap-1">
                     <button
                       onClick={() => updateAttendance(student.id, "present")}
-                      className={`rounded px-1.5 py-0.5 text-xs font-bold ${
+                      className={`rounded px-2 py-0.5 text-xs font-bold transition-colors ${
                         status === "present"
-                          ? "bg-(--color-success) text-white"
-                          : "border border-(--color-border) text-(--color-ink-muted) hover:bg-(--color-paper-dim)"
+                          ? "bg-(--color-success) text-(--color-ink-on-accent) shadow-hard-sm"
+                          : "border-2 border-(--color-border) text-(--color-ink-muted) bg-(--color-surface) hover:border-(--color-success) hover:bg-(--color-success-100)"
                       }`}
                     >
                       P
                     </button>
                     <button
                       onClick={() => updateAttendance(student.id, "absent")}
-                      className={`rounded px-1.5 py-0.5 text-xs font-bold ${
+                      className={`rounded px-2 py-0.5 text-xs font-bold transition-colors ${
                         status === "absent"
-                          ? "bg-(--color-danger) text-white"
-                          : "border border-(--color-border) text-(--color-ink-muted) hover:bg-(--color-paper-dim)"
+                          ? "bg-(--color-danger) text-(--color-ink-on-accent) shadow-hard-sm"
+                          : "border-2 border-(--color-border) text-(--color-ink-muted) bg-(--color-surface) hover:border-(--color-danger) hover:bg-(--color-danger-100)"
                       }`}
                     >
                       A
                     </button>
                     <button
                       onClick={() => updateAttendance(student.id, "late")}
-                      className={`rounded px-1.5 py-0.5 text-xs font-bold ${
+                      className={`rounded px-2 py-0.5 text-xs font-bold transition-colors ${
                         status === "late"
-                          ? "bg-(--color-warning) text-white"
-                          : "border border-(--color-border) text-(--color-ink-muted) hover:bg-(--color-paper-dim)"
+                          ? "bg-(--color-warning) text-(--color-ink-on-accent) shadow-hard-sm"
+                          : "border-2 border-(--color-border) text-(--color-ink-muted) bg-(--color-surface) hover:border-(--color-warning) hover:bg-(--color-warning-100)"
                       }`}
                     >
                       L
