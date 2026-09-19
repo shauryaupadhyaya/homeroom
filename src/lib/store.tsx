@@ -56,8 +56,14 @@ function readStoredTheme(): Theme {
   return stored === "dark" ? "dark" : "light";
 }
 
+function readStoredAuth(): boolean {
+  if (typeof window === "undefined") return false;
+  const stored = window.localStorage.getItem("homeroom-isAuthed");
+  return stored === "true";
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [isAuthed, setAuthed] = useState(false);
+  const [isAuthed, setAuthed] = useState(readStoredAuth);
   const [theme, setThemeState] = useState<Theme>(readStoredTheme);
   const [teacherState, setTeacherState] = useState(initialTeacher);
   const [classesState, setClassesState] = useState<SchoolClass[]>(initialClasses);
@@ -70,6 +76,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     document.documentElement.dataset.theme = theme;
     window.localStorage.setItem("homeroom-theme", theme);
   }, [theme]);
+
+  useEffect(() => {
+    window.localStorage.setItem("homeroom-isAuthed", isAuthed.toString());
+  }, [isAuthed]);
 
   const value = useMemo<AppState>(
     () => ({
