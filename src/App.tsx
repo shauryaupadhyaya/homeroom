@@ -8,6 +8,7 @@ import { Settings } from "./pages/Settings";
 import { Attendance } from "./pages/Attendance";
 import { Assessments } from "./pages/Assessments";
 import { Lesson } from "./pages/Lesson";
+import { LessonSummary } from "./pages/LessonSummary";
 import { Whiteboard } from "./pages/Whiteboard";
 
 function AppLayout() {
@@ -47,6 +48,7 @@ export default function App() {
 
       <Route element={<FullScreenGuard />}>
         <Route path="/lesson/:classId" element={<Lesson />} />
+        <Route path="/lesson/:classId/summary" element={<LessonSummary />} />
         <Route path="/whiteboard/:boardId" element={<Whiteboard />} />
       </Route>
 
