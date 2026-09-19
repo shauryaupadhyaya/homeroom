@@ -141,8 +141,8 @@ export function Attendance() {
                         onClick={() => updateAttendance(student.id, "present")}
                         className={`rounded px-3 py-1.5 text-xs font-bold transition-colors ${
                           record?.status === "present"
-                            ? "bg-(--color-success) text-white shadow-hard-sm"
-                            : "border-2 border-(--color-success) text-(--color-success) bg-(--color-success-100) hover:bg-(--color-success) hover:text-white"
+                            ? "bg-green-600 text-white shadow-hard-sm"
+                            : "border-2 border-green-600 text-green-700 bg-green-100 hover:bg-green-600 hover:text-white"
                         }`}
                       >
                         P
