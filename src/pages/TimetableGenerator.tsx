@@ -11,9 +11,39 @@ interface TimetableEntry {
   room: string;
 }
 
-interface GeneratedTimetable {
-  classId: string;
-  entries: TimetableEntry[];
+const ROOMS = ["C1", "C2", "C3", "Lab1", "Lab2"];
+const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+const START_TIMES = ["09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00"];
+
+function generateSmartTimetable(sessionCount: number, daysPerWeek: number): TimetableEntry[] {
+  const timetable: TimetableEntry[] = [];
+  const sessionsPerDay = Math.ceil(sessionCount / daysPerWeek);
+  let sessionIndex = 0;
+
+  for (let d = 0; d < daysPerWeek && sessionIndex < sessionCount; d++) {
+    const dayIndex = d % DAYS.length;
+    const day = DAYS[dayIndex];
+
+    for (let s = 0; s < sessionsPerDay && sessionIndex < sessionCount; s++) {
+      const startTimeStr = START_TIMES[s % START_TIMES.length];
+      const [hours, mins] = startTimeStr.split(":").map(Number);
+      const endHour = Math.min(hours + 1, 16);
+      const endTime = `${String(endHour).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
+
+      const room = ROOMS[sessionIndex % ROOMS.length];
+
+      timetable.push({
+        dayOfWeek: day,
+        startTime: startTimeStr,
+        endTime: endTime,
+        room: room,
+      });
+
+      sessionIndex++;
+    }
+  }
+
+  return timetable;
 }
 
 export function TimetableGenerator() {
@@ -29,45 +59,10 @@ export function TimetableGenerator() {
 
     setIsGenerating(true);
     try {
-      const selectedClass = classes.find((c) => c.id === selectedClassId);
-      if (!selectedClass) throw new Error("Class not found");
+      const sessions = Math.min(Math.max(parseInt(sessionCount) || 5, 1), 25);
+      const days = Math.min(Math.max(parseInt(daysPerWeek) || 5, 1), 7);
 
-      const prompt = `Generate a school timetable for class "${selectedClass.name}" (${selectedClass.subject}).
-Requirements:
-- ${sessionCount} class sessions per week
-- Spread across ${daysPerWeek} days
-- Each session is 50 minutes
-- Start times between 09:00 and 16:00
-- Include 15-min breaks between sessions
-- Assign rooms: C1, C2, C3, Lab1, Lab2
-
-Return ONLY a JSON array with this structure (no markdown, no explanation):
-[
-  {"dayOfWeek": "Monday", "startTime": "09:00", "endTime": "09:50", "room": "C1"},
-  ...
-]`;
-
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": import.meta.env.VITE_ANTHROPIC_API_KEY || "",
-        },
-        body: JSON.stringify({
-          model: "claude-opus-5",
-          max_tokens: 1024,
-          messages: [{ role: "user", content: prompt }],
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to generate timetable with AI");
-      }
-
-      const data = await response.json();
-      const aiContent = data.content[0]?.text || "[]";
-      const timetable = JSON.parse(aiContent);
-
+      const timetable = generateSmartTimetable(sessions, days);
       setGeneratedTimetable(timetable);
 
       for (const entry of timetable) {
@@ -81,8 +76,8 @@ Return ONLY a JSON array with this structure (no markdown, no explanation):
         });
       }
     } catch (error) {
-      console.error("AI generation failed:", error);
-      alert("Failed to generate timetable. Make sure VITE_ANTHROPIC_API_KEY is set in .env.local");
+      console.error("Generation failed:", error);
+      alert("Failed to save timetable. Check Supabase connection.");
     } finally {
       setIsGenerating(false);
     }
@@ -103,8 +98,8 @@ Return ONLY a JSON array with this structure (no markdown, no explanation):
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-display text-3xl font-bold text-(--color-ink)">AI Timetable Generator</h1>
-        <p className="mt-1 text-sm text-(--color-ink-muted)">Generate optimized timetables using AI</p>
+        <h1 className="font-display text-3xl font-bold text-(--color-ink)">Timetable Generator</h1>
+        <p className="mt-1 text-sm text-(--color-ink-muted)">Generate optimized timetables instantly</p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[200px_1fr]">
@@ -134,7 +129,7 @@ Return ONLY a JSON array with this structure (no markdown, no explanation):
                   <input
                     type="number"
                     min="1"
-                    max="10"
+                    max="25"
                     value={sessionCount}
                     onChange={(e) => setSessionCount(e.target.value)}
                     className="mt-2 w-full rounded-lg border-2 border-(--color-border) bg-(--color-surface) px-3 py-2 text-sm font-bold"
@@ -160,12 +155,12 @@ Return ONLY a JSON array with this structure (no markdown, no explanation):
                 {isGenerating ? (
                   <>
                     <Loader size={16} className="animate-spin" />
-                    Generating...
+                    Saving...
                   </>
                 ) : (
                   <>
                     <Wand2 size={16} />
-                    Generate with AI
+                    Generate Timetable
                   </>
                 )}
               </Button>
