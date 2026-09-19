@@ -5,6 +5,7 @@ import { Login } from "./pages/Login";
 import { Dashboard } from "./pages/Dashboard";
 import { Analytics } from "./pages/Analytics";
 import { Settings } from "./pages/Settings";
+import { Attendance } from "./pages/Attendance";
 import { Lesson } from "./pages/Lesson";
 import { Whiteboard } from "./pages/Whiteboard";
 
@@ -38,6 +39,7 @@ export default function App() {
       <Route element={<AppLayout />}>
         <Route path="/" element={<Dashboard />} />
         <Route path="/analytics" element={<Analytics />} />
+        <Route path="/attendance" element={<Attendance />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
 
