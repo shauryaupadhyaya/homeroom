@@ -8,6 +8,7 @@ import { Settings } from "./pages/Settings";
 import { Attendance } from "./pages/Attendance";
 import { Assessments } from "./pages/Assessments";
 import { Syllabus } from "./pages/Syllabus";
+import { LessonHistory } from "./pages/LessonHistory";
 import { Lesson } from "./pages/Lesson";
 import { LessonSummary } from "./pages/LessonSummary";
 import { StudentProfile } from "./pages/StudentProfile";
@@ -45,6 +46,7 @@ export default function App() {
         <Route path="/attendance" element={<Attendance />} />
         <Route path="/assessments" element={<Assessments />} />
         <Route path="/syllabus" element={<Syllabus />} />
+        <Route path="/lesson-history" element={<LessonHistory />} />
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/student/:studentId" element={<StudentProfile />} />
