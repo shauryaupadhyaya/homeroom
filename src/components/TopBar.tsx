@@ -54,15 +54,15 @@ export function TopBar() {
               to={item.to}
               end={item.end}
               className={({ isActive }) =>
-                `nav-hover flex items-center gap-1.5 rounded-lg border-2 px-3 py-2 text-sm font-bold ${
+                `nav-hover flex items-center gap-1.5 rounded-lg border-2 px-2 py-2 font-bold transition-all ${
                   isActive
                     ? "border-(--color-border) bg-(--color-orange-500) text-(--color-ink-on-accent) shadow-hard-sm"
                     : "border-transparent text-(--color-ink-soft) hover:bg-(--color-paper-dim) hover:text-(--color-ink)"
-                }`
+                } xl:px-3 text-xs sm:text-sm md:text-xs lg:text-xs xl:text-sm`
               }
             >
-              <item.icon size={16} strokeWidth={2.5} />
-              {item.label}
+              <item.icon size={16} strokeWidth={2.5} className="flex-shrink-0" />
+              <span className="hidden sm:inline">{item.label}</span>
             </NavLink>
           ))}
         </nav>

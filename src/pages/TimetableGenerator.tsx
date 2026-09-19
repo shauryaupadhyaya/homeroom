@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useApp } from "../lib/store";
 import { supabase } from "../lib/supabase";
 import { Card, Button } from "../components/ui";
-import { Wand2, Loader } from "lucide-react";
+import { Upload, Loader, FileText } from "lucide-react";
 
 interface TimetableEntry {
   dayOfWeek: string;
@@ -13,29 +13,49 @@ interface TimetableEntry {
 
 const ROOMS = ["C1", "C2", "C3", "Lab1", "Lab2"];
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
-const START_TIMES = ["09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00"];
 
-function generateSmartTimetable(sessionCount: number, daysPerWeek: number): TimetableEntry[] {
+function parseTimetableFromText(text: string): TimetableEntry[] {
   const timetable: TimetableEntry[] = [];
-  const sessionsPerDay = Math.ceil(sessionCount / daysPerWeek);
+
+  // Look for patterns like "Monday 09:00-10:00 C1" or "Mon 9am-10am Room C1"
+  const patterns = [
+    /(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(\d{1,2}):?(\d{2})?\s*(?:am|pm)?[\s\-]*(\d{1,2}):?(\d{2})?\s*(?:am|pm)?\s+([A-Za-z0-9]+)/gi,
+    /(\d{1,2}):(\d{2})\s*(?:am|pm)?\s*[-–]\s*(\d{1,2}):(\d{2})\s*(?:am|pm)?\s+(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+([A-Za-z0-9]+)/gi,
+  ];
+
+  const dayMap: Record<string, string> = {
+    'monday': 'Monday', 'mon': 'Monday',
+    'tuesday': 'Tuesday', 'tue': 'Tuesday',
+    'wednesday': 'Wednesday', 'wed': 'Wednesday',
+    'thursday': 'Thursday', 'thu': 'Thursday',
+    'friday': 'Friday', 'fri': 'Friday',
+    'saturday': 'Saturday', 'sat': 'Saturday',
+    'sunday': 'Sunday', 'sun': 'Sunday',
+  };
+
+  // Extract all times and days
+  const lines = text.split('\n');
   let sessionIndex = 0;
 
-  for (let d = 0; d < daysPerWeek && sessionIndex < sessionCount; d++) {
-    const dayIndex = d % DAYS.length;
-    const day = DAYS[dayIndex];
+  for (const line of lines) {
+    if (line.trim().length === 0) continue;
 
-    for (let s = 0; s < sessionsPerDay && sessionIndex < sessionCount; s++) {
-      const startTimeStr = START_TIMES[s % START_TIMES.length];
-      const [hours, mins] = startTimeStr.split(":").map(Number);
-      const endHour = Math.min(hours + 1, 16);
-      const endTime = `${String(endHour).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
+    const timeMatch = line.match(/(\d{1,2}):(\d{2})\s*[-–]\s*(\d{1,2}):(\d{2})/);
+    const dayMatch = line.match(/Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|Mon|Tue|Wed|Thu|Fri|Sat|Sun/i);
+    const roomMatch = line.match(/([A-Za-z]+\d+|Lab\d+)/);
 
-      const room = ROOMS[sessionIndex % ROOMS.length];
+    if (timeMatch && dayMatch) {
+      const startHour = String(timeMatch[1]).padStart(2, '0');
+      const startMin = timeMatch[2];
+      const endHour = String(timeMatch[3]).padStart(2, '0');
+      const endMin = timeMatch[4];
+      const day = dayMap[dayMatch[0].toLowerCase()] || dayMatch[0];
+      const room = roomMatch ? roomMatch[0] : ROOMS[sessionIndex % ROOMS.length];
 
       timetable.push({
         dayOfWeek: day,
-        startTime: startTimeStr,
-        endTime: endTime,
+        startTime: `${startHour}:${startMin}`,
+        endTime: `${endHour}:${endMin}`,
         room: room,
       });
 
@@ -43,26 +63,32 @@ function generateSmartTimetable(sessionCount: number, daysPerWeek: number): Time
     }
   }
 
-  return timetable;
+  return timetable.length > 0 ? timetable : [];
 }
 
 export function TimetableGenerator() {
   const { classes } = useApp();
   const [selectedClassId, setSelectedClassId] = useState<string | null>(classes[0]?.id || null);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [generatedTimetable, setGeneratedTimetable] = useState<TimetableEntry[]>([]);
-  const [sessionCount, setSessionCount] = useState("5");
-  const [daysPerWeek, setDaysPerWeek] = useState("5");
+  const [uploadedFileName, setUploadedFileName] = useState("");
 
-  const handleGenerateTimetable = async () => {
-    if (!selectedClassId) return;
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !selectedClassId) return;
 
-    setIsGenerating(true);
+    setIsProcessing(true);
     try {
-      const sessions = Math.min(Math.max(parseInt(sessionCount) || 5, 1), 25);
-      const days = Math.min(Math.max(parseInt(daysPerWeek) || 5, 1), 7);
+      const text = await file.text();
+      const timetable = parseTimetableFromText(text);
 
-      const timetable = generateSmartTimetable(sessions, days);
+      if (timetable.length === 0) {
+        alert("Could not parse timetable. Format: 'Monday 09:00-10:00 C1' per line");
+        setIsProcessing(false);
+        return;
+      }
+
+      setUploadedFileName(file.name);
       setGeneratedTimetable(timetable);
 
       for (const entry of timetable) {
@@ -75,11 +101,13 @@ export function TimetableGenerator() {
           room: entry.room,
         });
       }
+
+      alert("✅ Timetable uploaded and saved!");
     } catch (error) {
-      console.error("Generation failed:", error);
-      alert("Failed to save timetable. Check Supabase connection.");
+      console.error("Upload failed:", error);
+      alert("Failed to process file");
     } finally {
-      setIsGenerating(false);
+      setIsProcessing(false);
     }
   };
 
@@ -98,8 +126,8 @@ export function TimetableGenerator() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-display text-3xl font-bold text-(--color-ink)">Timetable Generator</h1>
-        <p className="mt-1 text-sm text-(--color-ink-muted)">Generate optimized timetables instantly</p>
+        <h1 className="font-display text-3xl font-bold text-(--color-ink)">Upload Timetable</h1>
+        <p className="mt-1 text-sm text-(--color-ink-muted)">Upload a timetable file and convert to schedule</p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[200px_1fr]">
@@ -121,55 +149,49 @@ export function TimetableGenerator() {
 
         <div className="space-y-4">
           {selectedClass && (
-            <Card>
-              <h2 className="mb-4 font-display text-lg font-bold text-(--color-ink)">Configure Timetable</h2>
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div>
-                  <label className="text-sm font-bold text-(--color-ink-muted)">Sessions Per Week</label>
+            <Card className="border-dashed">
+              <div className="flex flex-col items-center justify-center py-8">
+                <Upload size={32} className="mb-3 text-(--color-orange-500)" />
+                <h3 className="mb-2 font-bold text-(--color-ink)">Upload Timetable</h3>
+                <p className="mb-2 text-center text-sm text-(--color-ink-muted)">
+                  Upload a .txt or .pdf file
+                  <br />
+                  Format each line: "Monday 09:00-10:00 C1"
+                </p>
+                <label>
                   <input
-                    type="number"
-                    min="1"
-                    max="25"
-                    value={sessionCount}
-                    onChange={(e) => setSessionCount(e.target.value)}
-                    className="mt-2 w-full rounded-lg border-2 border-(--color-border) bg-(--color-surface) px-3 py-2 text-sm font-bold"
+                    type="file"
+                    accept=".txt,.pdf"
+                    onChange={handleFileUpload}
+                    disabled={isProcessing}
+                    className="hidden"
                   />
-                </div>
-                <div>
-                  <label className="text-sm font-bold text-(--color-ink-muted)">Days Per Week</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="7"
-                    value={daysPerWeek}
-                    onChange={(e) => setDaysPerWeek(e.target.value)}
-                    className="mt-2 w-full rounded-lg border-2 border-(--color-border) bg-(--color-surface) px-3 py-2 text-sm font-bold"
-                  />
-                </div>
+                  <Button
+                    as="span"
+                    disabled={isProcessing}
+                    className="cursor-pointer"
+                  >
+                    {isProcessing ? (
+                      <>
+                        <Loader size={16} className="animate-spin mr-2" />
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <Upload size={16} className="mr-2" />
+                        Select File
+                      </>
+                    )}
+                  </Button>
+                </label>
               </div>
-              <Button
-                onClick={handleGenerateTimetable}
-                disabled={isGenerating}
-                className="flex items-center gap-2 w-full"
-              >
-                {isGenerating ? (
-                  <>
-                    <Loader size={16} className="animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Wand2 size={16} />
-                    Generate Timetable
-                  </>
-                )}
-              </Button>
             </Card>
           )}
 
           {generatedTimetable.length > 0 && (
             <Card>
-              <h2 className="mb-4 font-bold text-(--color-ink)">Generated Timetable</h2>
+              <h2 className="mb-2 font-bold text-(--color-ink)">Timetable from {uploadedFileName}</h2>
+              <p className="mb-4 text-sm text-(--color-ink-muted)">{generatedTimetable.length} sessions imported</p>
               <div className="space-y-4">
                 {daysOrder.map((day) => {
                   const daySchedule = groupedByDay[day];
