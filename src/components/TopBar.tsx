@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
-import { LayoutGrid, BarChart3, Settings as SettingsIcon, LogOut, NotebookPen, ChevronDown, Calendar, ClipboardList } from "lucide-react";
+import { LayoutGrid, BarChart3, Settings as SettingsIcon, LogOut, NotebookPen, ChevronDown, Calendar, ClipboardList, BookOpen } from "lucide-react";
 import { useApp } from "../lib/store";
 import { Avatar } from "./ui";
 
@@ -8,6 +8,7 @@ const navItems = [
   { to: "/", label: "Dashboard", icon: LayoutGrid, end: true },
   { to: "/attendance", label: "Attendance", icon: Calendar, end: false },
   { to: "/assessments", label: "Assessments", icon: ClipboardList, end: false },
+  { to: "/syllabus", label: "Syllabus", icon: BookOpen, end: false },
   { to: "/analytics", label: "Analytics", icon: BarChart3, end: false },
 ];
 
