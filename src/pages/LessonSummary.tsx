@@ -1,8 +1,21 @@
+/**
+ * Lesson Summary page - shows lesson statistics and materials export
+ *
+ * User Requirement: "At the end of the lesson... Add a section for Lesson Materials... Notebook, Whiteboard...
+ * The teacher should be able to download the lesson materials"
+ *
+ * Changes: Add "Lesson Materials" section with PDF download buttons for Notebook and Whiteboard
+ * Imports: PDF export utilities and notebook rendering
+ * Data flow: Retrieves notebook data from sessionStorage(lesson-notebook-{classId})
+ */
+
 import { useState, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useApp } from "../lib/store";
 import { Card, Button, Badge } from "../components/ui";
-import { ArrowRight, Clock, Users } from "lucide-react";
+import { ArrowRight, Clock, Users, Download } from "lucide-react";
+import { exportNotebookToPDF } from "../lib/pdfExport";
+import { renderNotebookPageToCanvas } from "../lib/notebookRender";
 
 interface LessonSession {
   classId: string;
@@ -51,6 +64,31 @@ export function LessonSummary() {
   const presentCount = Object.values(session.attendance).filter((s) => s === "present").length;
   const lateCount = Object.values(session.attendance).filter((s) => s === "late").length;
   const attendanceRate = classStudents.length > 0 ? Math.round(((presentCount + lateCount) / classStudents.length) * 100) : 0;
+
+  // Export handlers
+  const handleExportNotebook = async () => {
+    const notebookData = sessionStorage.getItem(`lesson-notebook-${classId}`);
+    if (!notebookData) {
+      alert("No notebook data to export");
+      return;
+    }
+    try {
+      const pages = JSON.parse(notebookData);
+      const pageCanvases = pages.map((page: any) => ({
+        number: page.number,
+        canvas: renderNotebookPageToCanvas(page),
+      }));
+      await exportNotebookToPDF(pageCanvases, `${selectedClass?.name}-Notebook.pdf`);
+    } catch (error) {
+      console.error("Failed to export notebook:", error);
+      alert("Failed to export notebook PDF");
+    }
+  };
+
+  const handleExportWhiteboard = () => {
+    alert("Whiteboard export coming soon");
+    // TODO: Implement whiteboard export
+  };
 
   return (
     <div className="min-h-screen bg-(--color-paper) px-6 py-8">
@@ -136,6 +174,27 @@ export function LessonSummary() {
             </div>
           </Card>
         )}
+
+        <Card>
+          <h2 className="font-display text-xl font-bold text-(--color-ink)">Lesson Materials</h2>
+          <p className="mt-2 text-sm text-(--color-ink-muted)">Download your lesson materials</p>
+          <div className="mt-4 space-y-3">
+            <button
+              onClick={handleExportNotebook}
+              className="flex w-full items-center justify-between rounded-lg border-2 border-(--color-orange-500) bg-(--color-orange-100) px-4 py-3 hover:bg-(--color-orange-200)"
+            >
+              <span className="font-bold text-(--color-ink)">📓 Notebook PDF</span>
+              <Download size={16} className="text-(--color-orange-600)" />
+            </button>
+            <button
+              onClick={handleExportWhiteboard}
+              className="flex w-full items-center justify-between rounded-lg border-2 border-(--color-sky-500) bg-(--color-sky-100) px-4 py-3 hover:bg-(--color-sky-200)"
+            >
+              <span className="font-bold text-(--color-ink)">✏️ Whiteboard PDF</span>
+              <Download size={16} className="text-(--color-sky-600)" />
+            </button>
+          </div>
+        </Card>
 
         <div className="flex gap-3">
           <Button

@@ -226,7 +226,7 @@ function LessonContent({ classId, startTime }: { classId: string; startTime: Dat
         </div>
         <div className="relative flex-1 overflow-hidden">
           {lessonMode === "whiteboard" && <Board classId={cls.id} />}
-          {lessonMode === "notebook" && <Notebook />}
+          {lessonMode === "notebook" && <Notebook classId={cls.id} />}
           <AttendancePanel classId={cls.id} />
         </div>
       </div>
