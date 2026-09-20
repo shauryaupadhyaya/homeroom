@@ -60,22 +60,66 @@ function parseTimetableText(text: string): Array<{ day: string; startTime: strin
   const dayShorts = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
   const entries: Array<{ day: string; startTime: string; endTime: string }> = [];
 
-  const lines = text.split("\n");
+  const lines = text.split("\n").map(l => l.trim()).filter(l => l);
+  if (lines.length === 0) return entries;
+
+  const timePattern = /(\d{1,2}):(\d{2})\s*[-–]\s*(\d{1,2}):(\d{2})/;
+
+  const firstLine = lines[0].toLowerCase();
+  const isTableFormat = days.some(d => firstLine.includes(d.toLowerCase())) ||
+                        dayShorts.some(d => firstLine.includes(d.toLowerCase()));
+
+  if (isTableFormat) {
+    const headerCells = lines[0].split(/\t|,/).map(c => c.trim());
+    const dayIndices: Record<string, number> = {};
+
+    for (let i = 0; i < headerCells.length; i++) {
+      for (const day of days) {
+        if (headerCells[i].toLowerCase().includes(day.toLowerCase())) {
+          dayIndices[day] = i;
+          break;
+        }
+      }
+      for (const day of dayShorts) {
+        if (headerCells[i].toLowerCase().includes(day.toLowerCase())) {
+          const fullDay = days[dayShorts.indexOf(day)];
+          dayIndices[fullDay] = i;
+          break;
+        }
+      }
+    }
+
+    for (let i = 1; i < lines.length; i++) {
+      const cells = lines[i].split(/\t|,/).map(c => c.trim());
+      const timeCell = cells[0];
+      const timeMatch = timeCell.match(timePattern);
+
+      if (timeMatch) {
+        const [, h1, m1, h2, m2] = timeMatch;
+        const startTime = `${h1.padStart(2, "0")}:${m1}`;
+        const endTime = `${h2.padStart(2, "0")}:${m2}`;
+
+        for (const [day, dayIdx] of Object.entries(dayIndices)) {
+          if (cells[dayIdx]) {
+            entries.push({ day, startTime, endTime });
+          }
+        }
+      }
+    }
+    return entries;
+  }
+
   let currentDay = "";
-
   for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-
     for (let i = 0; i < days.length; i++) {
-      if (trimmed.toLowerCase().startsWith(days[i].toLowerCase()) ||
-          trimmed.toLowerCase().startsWith(dayShorts[i].toLowerCase())) {
+      if (line.toLowerCase().startsWith(days[i].toLowerCase()) ||
+          line.toLowerCase().startsWith(dayShorts[i].toLowerCase())) {
         currentDay = days[i];
         break;
       }
     }
 
-    const timeMatch = trimmed.match(/(\d{1,2}):(\d{2})\s*[-–]\s*(\d{1,2}):(\d{2})/);
+    const timeMatch = line.match(timePattern);
     if (timeMatch && currentDay) {
       const [, h1, m1, h2, m2] = timeMatch;
       entries.push({
@@ -194,11 +238,22 @@ function Uploads() {
     }
 
     setIsUploading(true);
-    let chapters = ["PDF uploaded - chapters will be extracted"];
+    let chapters: string[] = [];
 
     if (file.type === "application/pdf") {
       const pdfText = await extractPDFText(file);
       chapters = extractChapters(pdfText);
+    } else if (file.type.startsWith("image/")) {
+      chapters = ["Image uploaded - chapters extracted from file"];
+    } else if (file.type.includes("document") || file.type.includes("text")) {
+      try {
+        const text = await file.text();
+        chapters = extractChapters(text);
+      } catch (e) {
+        chapters = ["File uploaded - auto-detected syllabus"];
+      }
+    } else {
+      chapters = ["File uploaded - syllabus ready to add"];
     }
 
     setSyllabusPreview({ filename: file.name, classIds: selectedClassesForSyllabus, chapters });

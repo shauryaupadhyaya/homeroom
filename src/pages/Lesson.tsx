@@ -148,7 +148,7 @@ function LessonContent({ classId, startTime }: { classId: string; startTime: Dat
   const { classes } = useApp();
   const navigate = useNavigate();
   const cls = classes.find((c) => c.id === classId);
-  const [lessonMode, setLessonMode] = useState<"whiteboard" | "notebook" | "widgets">("whiteboard");
+  const [lessonMode, setLessonMode] = useState<"whiteboard" | "notebook">("whiteboard");
 
   const handleEndLesson = () => {
     const attendance = JSON.parse(sessionStorage.getItem(`lesson-attendance-${classId}`) || "{}");
@@ -223,20 +223,11 @@ function LessonContent({ classId, startTime }: { classId: string; startTime: Dat
           >
             Notebook
           </button>
-          <button
-            onClick={() => setLessonMode("widgets")}
-            className={`px-3 py-1.5 text-sm font-bold rounded-lg ${
-              lessonMode === "widgets" ? "bg-(--color-orange-500) text-(--color-ink-on-accent)" : "bg-(--color-paper-dim) text-(--color-ink)"
-            }`}
-          >
-            Widgets
-          </button>
         </div>
         <div className="relative flex-1 overflow-hidden">
           {lessonMode === "whiteboard" && <Board classId={cls.id} />}
           {lessonMode === "notebook" && <Notebook />}
-          {lessonMode === "widgets" && <Board classId={cls.id} />}
-          {lessonMode !== "widgets" && <AttendancePanel classId={cls.id} />}
+          <AttendancePanel classId={cls.id} />
         </div>
       </div>
     </BoardProvider>
