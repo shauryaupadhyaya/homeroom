@@ -95,6 +95,8 @@ function Uploads() {
   const [uploadMessage, setUploadMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [uploadedTimetables, setUploadedTimetables] = useState<any[]>([]);
   const [uploadedSyllabi, setUploadedSyllabi] = useState<any[]>([]);
+  const [timetablePreview, setTimetablePreview] = useState<{ filename: string; entries: any[] } | null>(null);
+  const [syllabusPreview, setSyllabusPreview] = useState<{ filename: string; classIds: string[] } | null>(null);
 
   const handleTimetableUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -106,24 +108,37 @@ function Uploads() {
       const entries = parseTimetableText(text);
 
       if (entries.length === 0) {
-        setUploadMessage({ type: "error", text: "Could not parse any timetable entries. Format: 'Monday 09:00 - 10:00'" });
+        setUploadMessage({ type: "error", text: "Could not parse any timetable entries. Format: 'Day HH:MM - HH:MM'" });
         setIsUploading(false);
         return;
       }
 
-      for (const cls of classes) {
-        await timetableApi.deleteByClass(cls.id);
-        for (const entry of entries) {
-          await timetableApi.create(cls.id, entry.day, entry.startTime, entry.endTime);
-        }
-      }
-
-      setUploadMessage({ type: "success", text: `✓ Timetable uploaded for ${classes.length} classes with ${entries.length} entries` });
-      setUploadedTimetables(entries);
+      setTimetablePreview({ filename: file.name, entries });
       event.target.value = "";
     } catch (error) {
       console.error("Timetable upload failed:", error);
       setUploadMessage({ type: "error", text: `Upload failed: ${error instanceof Error ? error.message : "Unknown error"}` });
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const confirmTimetableUpload = async () => {
+    if (!timetablePreview) return;
+    setIsUploading(true);
+    try {
+      for (const cls of classes) {
+        await timetableApi.deleteByClass(cls.id);
+        for (const entry of timetablePreview.entries) {
+          await timetableApi.create(cls.id, entry.day, entry.startTime, entry.endTime);
+        }
+      }
+      setUploadMessage({ type: "success", text: `✓ Timetable saved for ${classes.length} classes (${timetablePreview.entries.length} periods)` });
+      setUploadedTimetables(timetablePreview.entries);
+      setTimetablePreview(null);
+    } catch (error) {
+      console.error("Timetable save failed:", error);
+      setUploadMessage({ type: "error", text: `Save failed: ${error instanceof Error ? error.message : "Unknown error"}` });
     } finally {
       setIsUploading(false);
     }
@@ -135,27 +150,37 @@ function Uploads() {
       setUploadMessage({ type: "error", text: "Select at least one class" });
       return;
     }
+    setSyllabusPreview({ filename: file.name, classIds: selectedClassesForSyllabus });
+    event.target.value = "";
+  };
+
+  const confirmSyllabusUpload = async () => {
+    if (!syllabusPreview) return;
     setIsUploading(true);
     setUploadMessage(null);
     try {
-      const filePath = `syllabi/${Date.now()}-${file.name}`;
+      const filePath = `syllabi/${Date.now()}-${syllabusPreview.filename}`;
+      const fileInput = document.getElementById("syllabus-input") as HTMLInputElement;
+      const file = fileInput.files?.[0];
+      if (!file) throw new Error("File not found");
+
       const { error: uploadError } = await supabase.storage.from("syllabi").upload(filePath, file);
       if (uploadError) throw uploadError;
 
       const { data: fileData } = supabase.storage.from("syllabi").getPublicUrl(filePath);
       const fileUrl = fileData.publicUrl;
 
-      for (const classId of selectedClassesForSyllabus) {
-        await syllabusFilesApi.create(classId, file.name, fileUrl, file.size);
+      for (const classId of syllabusPreview.classIds) {
+        await syllabusFilesApi.create(classId, syllabusPreview.filename, fileUrl, file.size);
       }
 
-      setUploadMessage({ type: "success", text: `✓ Syllabus uploaded to ${selectedClassesForSyllabus.length} class(es)` });
-      setUploadedSyllabi([...uploadedSyllabi, { name: file.name, classes: selectedClassesForSyllabus.length }]);
+      setUploadMessage({ type: "success", text: `✓ Syllabus saved to ${syllabusPreview.classIds.length} class(es)` });
+      setUploadedSyllabi([...uploadedSyllabi, { name: syllabusPreview.filename, classes: syllabusPreview.classIds.length }]);
       setSelectedClassesForSyllabus([]);
-      event.target.value = "";
+      setSyllabusPreview(null);
     } catch (error) {
-      console.error("Syllabus upload failed:", error);
-      setUploadMessage({ type: "error", text: `Upload failed: ${error instanceof Error ? error.message : "Unknown error"}` });
+      console.error("Syllabus save failed:", error);
+      setUploadMessage({ type: "error", text: `Save failed: ${error instanceof Error ? error.message : "Unknown error"}` });
     } finally {
       setIsUploading(false);
     }
@@ -185,7 +210,36 @@ function Uploads() {
       <Card>
         <h2 className="font-display text-lg font-semibold text-(--color-ink)">Upload Timetable</h2>
         <p className="mt-1 text-sm text-(--color-ink-muted)">Upload TXT, PDF, or image → converts to all classes</p>
-        <div className="mt-5 rounded-lg border-2 border-dashed border-(--color-border) p-8 text-center">
+
+        {timetablePreview && (
+          <div className="mt-4 space-y-3 rounded-lg border-2 border-(--color-orange-500) bg-(--color-orange-100)/50 p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-bold text-(--color-ink)">File: {timetablePreview.filename}</p>
+                <p className="mt-1 text-sm text-(--color-ink-muted)">{timetablePreview.entries.length} periods found</p>
+              </div>
+            </div>
+            <div className="max-h-48 space-y-1 overflow-y-auto rounded bg-(--color-paper) p-2">
+              {timetablePreview.entries.map((entry, i) => (
+                <div key={i} className="flex justify-between px-2 py-1 text-sm text-(--color-ink)">
+                  <span className="font-medium">{entry.day}</span>
+                  <span>{entry.startTime} - {entry.endTime}</span>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={confirmTimetableUpload} disabled={isUploading} className="flex-1">
+                {isUploading ? "Saving..." : "✓ Confirm & Add"}
+              </Button>
+              <Button onClick={() => setTimetablePreview(null)} variant="ghost" disabled={isUploading}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {!timetablePreview && (
+          <div className="mt-5 rounded-lg border-2 border-dashed border-(--color-border) p-8 text-center">
           <Upload size={32} className="mx-auto mb-3 text-(--color-orange-500)" />
           <p className="mb-2 font-bold text-(--color-ink)">Drop timetable file or click to select</p>
           <p className="mb-4 text-xs text-(--color-ink-muted)">Formats: TXT, PDF, JPG, PNG</p>
@@ -204,7 +258,9 @@ function Uploads() {
           >
             {isUploading ? "Processing..." : "Select File"}
           </button>
-        </div>
+          </div>
+        )}
+
         {uploadedTimetables.length > 0 && (
           <div className="mt-4">
             <p className="text-xs font-bold uppercase text-(--color-ink-muted)">Uploaded entries</p>
@@ -222,9 +278,37 @@ function Uploads() {
       <Card>
         <h2 className="font-display text-lg font-semibold text-(--color-ink)">Upload Syllabus</h2>
         <p className="mt-1 text-sm text-(--color-ink-muted)">Upload PDF → add to classes → track progress per class</p>
-        <div className="mt-4">
-          <label className="mb-3 block text-sm font-bold text-(--color-ink)">Select Classes to Add</label>
-          <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
+
+        {syllabusPreview && (
+          <div className="mt-4 space-y-3 rounded-lg border-2 border-(--color-orange-500) bg-(--color-orange-100)/50 p-4">
+            <div>
+              <p className="font-bold text-(--color-ink)">File: {syllabusPreview.filename}</p>
+              <p className="mt-1 text-sm text-(--color-ink-muted)">Adding to {syllabusPreview.classIds.length} class(es)</p>
+            </div>
+            <div className="rounded bg-(--color-paper) p-2">
+              <div className="space-y-1">
+                {syllabusPreview.classIds.map((classId) => {
+                  const cls = classes.find((c) => c.id === classId);
+                  return cls ? <p key={classId} className="px-2 py-1 text-sm text-(--color-ink)">• {cls.name}</p> : null;
+                })}
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={confirmSyllabusUpload} disabled={isUploading} className="flex-1">
+                {isUploading ? "Saving..." : "✓ Confirm & Add"}
+              </Button>
+              <Button onClick={() => setSyllabusPreview(null)} variant="ghost" disabled={isUploading}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {!syllabusPreview && (
+          <>
+            <div className="mt-4">
+              <label className="mb-3 block text-sm font-bold text-(--color-ink)">Select Classes to Add</label>
+              <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
             {classes.map((cls) => (
               <button
                 key={cls.id}
@@ -265,7 +349,10 @@ function Uploads() {
           >
             {isUploading ? "Uploading..." : "Select PDF"}
           </button>
-        </div>
+          </div>
+          </>
+        )}
+
         {uploadedSyllabi.length > 0 && (
           <div className="mt-4">
             <p className="text-xs font-bold uppercase text-(--color-ink-muted)">Uploaded syllabi</p>
