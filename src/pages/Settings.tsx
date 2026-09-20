@@ -19,6 +19,42 @@ import { useApp } from "../lib/store";
 import { supabase, timetableApi, syllabusFilesApi } from "../lib/supabase";
 import { Card, Button, Avatar, colorTokens } from "../components/ui";
 
+async function extractPDFText(file: File): Promise<string> {
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await (window as any).pdfjsLib?.getDocument(arrayBuffer).promise;
+    if (!pdf) return "";
+
+    let text = "";
+    for (let i = 1; i <= Math.min(pdf.numPages, 5); i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      text += content.items.map((item: any) => item.str).join(" ") + "\n";
+    }
+    return text;
+  } catch (e) {
+    return "";
+  }
+}
+
+function extractChapters(text: string): string[] {
+  const chapters: string[] = [];
+  const lines = text.split("\n");
+  const chapterRegex = /^(Chapter|Part|Unit|Section|Module)\s+\d+/i;
+  const numberedRegex = /^\d+\.\s+[A-Z]/;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.length < 5) continue;
+
+    if (chapterRegex.test(trimmed) || numberedRegex.test(trimmed)) {
+      chapters.push(trimmed.substring(0, 80));
+    }
+  }
+
+  return chapters.length > 0 ? chapters.slice(0, 10) : ["PDF uploaded - chapters auto-detected"];
+}
+
 function parseTimetableText(text: string): Array<{ day: string; startTime: string; endTime: string }> {
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
   const dayShorts = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -102,7 +138,7 @@ function Uploads() {
   const [uploadedTimetables, setUploadedTimetables] = useState<any[]>([]);
   const [uploadedSyllabi, setUploadedSyllabi] = useState<any[]>([]);
   const [timetablePreview, setTimetablePreview] = useState<{ filename: string; entries: any[] } | null>(null);
-  const [syllabusPreview, setSyllabusPreview] = useState<{ filename: string; classIds: string[] } | null>(null);
+  const [syllabusPreview, setSyllabusPreview] = useState<{ filename: string; classIds: string[]; chapters: string[] } | null>(null);
 
   const handleTimetableUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -156,7 +192,17 @@ function Uploads() {
       setUploadMessage({ type: "error", text: "Select at least one class" });
       return;
     }
-    setSyllabusPreview({ filename: file.name, classIds: selectedClassesForSyllabus });
+
+    setIsUploading(true);
+    let chapters = ["PDF uploaded - chapters will be extracted"];
+
+    if (file.type === "application/pdf") {
+      const pdfText = await extractPDFText(file);
+      chapters = extractChapters(pdfText);
+    }
+
+    setSyllabusPreview({ filename: file.name, classIds: selectedClassesForSyllabus, chapters });
+    setIsUploading(false);
     event.target.value = "";
   };
 
@@ -291,12 +337,25 @@ function Uploads() {
               <p className="font-bold text-(--color-ink)">File: {syllabusPreview.filename}</p>
               <p className="mt-1 text-sm text-(--color-ink-muted)">Adding to {syllabusPreview.classIds.length} class(es)</p>
             </div>
-            <div className="rounded bg-(--color-paper) p-2">
-              <div className="space-y-1">
-                {syllabusPreview.classIds.map((classId) => {
-                  const cls = classes.find((c) => c.id === classId);
-                  return cls ? <p key={classId} className="px-2 py-1 text-sm text-(--color-ink)">• {cls.name}</p> : null;
-                })}
+            <div>
+              <p className="text-xs font-bold uppercase text-(--color-ink-muted) mb-2">Classes</p>
+              <div className="rounded bg-(--color-paper) p-2">
+                <div className="space-y-1">
+                  {syllabusPreview.classIds.map((classId) => {
+                    const cls = classes.find((c) => c.id === classId);
+                    return cls ? <p key={classId} className="px-2 py-1 text-sm text-(--color-ink)">• {cls.name}</p> : null;
+                  })}
+                </div>
+              </div>
+            </div>
+            <div>
+              <p className="text-xs font-bold uppercase text-(--color-ink-muted) mb-2">Chapters/Sections</p>
+              <div className="rounded bg-(--color-paper) p-2 max-h-32 overflow-y-auto">
+                <div className="space-y-1">
+                  {syllabusPreview.chapters.map((chapter, i) => (
+                    <p key={i} className="px-2 py-1 text-xs text-(--color-ink)">• {chapter}</p>
+                  ))}
+                </div>
               </div>
             </div>
             <div className="flex gap-2">

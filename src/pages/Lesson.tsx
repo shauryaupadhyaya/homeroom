@@ -5,6 +5,7 @@ import { useApp } from "../lib/store";
 import { BoardProvider, useBoard } from "../whiteboard/BoardContext";
 import { widgetLiveValue } from "../whiteboard/widgets";
 import { Board } from "../whiteboard/Board";
+import { Notebook } from "../whiteboard/Notebook";
 import { ProgressBar, colorTokens, EmptyState, Button } from "../components/ui";
 
 type AttendanceStatus = "present" | "absent" | "late";
@@ -147,6 +148,7 @@ function LessonContent({ classId, startTime }: { classId: string; startTime: Dat
   const { classes } = useApp();
   const navigate = useNavigate();
   const cls = classes.find((c) => c.id === classId);
+  const [lessonMode, setLessonMode] = useState<"whiteboard" | "notebook" | "widgets">("whiteboard");
 
   const handleEndLesson = () => {
     const attendance = JSON.parse(sessionStorage.getItem(`lesson-attendance-${classId}`) || "{}");
@@ -204,9 +206,37 @@ function LessonContent({ classId, startTime }: { classId: string; startTime: Dat
     >
       <div className="flex h-screen flex-col">
         <LessonTopBar classId={cls.id} onEndLesson={handleEndLesson} />
+        <div className="flex h-12 items-center gap-2 border-b-2 border-(--color-border) bg-(--color-surface) px-4">
+          <button
+            onClick={() => setLessonMode("whiteboard")}
+            className={`px-3 py-1.5 text-sm font-bold rounded-lg ${
+              lessonMode === "whiteboard" ? "bg-(--color-orange-500) text-(--color-ink-on-accent)" : "bg-(--color-paper-dim) text-(--color-ink)"
+            }`}
+          >
+            Whiteboard
+          </button>
+          <button
+            onClick={() => setLessonMode("notebook")}
+            className={`px-3 py-1.5 text-sm font-bold rounded-lg ${
+              lessonMode === "notebook" ? "bg-(--color-orange-500) text-(--color-ink-on-accent)" : "bg-(--color-paper-dim) text-(--color-ink)"
+            }`}
+          >
+            Notebook
+          </button>
+          <button
+            onClick={() => setLessonMode("widgets")}
+            className={`px-3 py-1.5 text-sm font-bold rounded-lg ${
+              lessonMode === "widgets" ? "bg-(--color-orange-500) text-(--color-ink-on-accent)" : "bg-(--color-paper-dim) text-(--color-ink)"
+            }`}
+          >
+            Widgets
+          </button>
+        </div>
         <div className="relative flex-1 overflow-hidden">
-          <Board classId={cls.id} />
-          <AttendancePanel classId={cls.id} />
+          {lessonMode === "whiteboard" && <Board classId={cls.id} />}
+          {lessonMode === "notebook" && <Notebook />}
+          {lessonMode === "widgets" && <Board classId={cls.id} />}
+          {lessonMode !== "widgets" && <AttendancePanel classId={cls.id} />}
         </div>
       </div>
     </BoardProvider>
