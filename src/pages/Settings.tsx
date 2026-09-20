@@ -21,26 +21,32 @@ import { Card, Button, Avatar, colorTokens } from "../components/ui";
 
 function parseTimetableText(text: string): Array<{ day: string; startTime: string; endTime: string }> {
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+  const dayShorts = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
   const entries: Array<{ day: string; startTime: string; endTime: string }> = [];
 
   const lines = text.split("\n");
+  let currentDay = "";
+
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
 
-    for (const day of days) {
-      if (trimmed.toLowerCase().includes(day.toLowerCase())) {
-        const timeMatch = trimmed.match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/);
-        if (timeMatch) {
-          const [, h1, m1, h2, m2] = timeMatch;
-          entries.push({
-            day,
-            startTime: `${h1.padStart(2, "0")}:${m1}`,
-            endTime: `${h2.padStart(2, "0")}:${m2}`,
-          });
-        }
+    for (let i = 0; i < days.length; i++) {
+      if (trimmed.toLowerCase().startsWith(days[i].toLowerCase()) ||
+          trimmed.toLowerCase().startsWith(dayShorts[i].toLowerCase())) {
+        currentDay = days[i];
         break;
       }
+    }
+
+    const timeMatch = trimmed.match(/(\d{1,2}):(\d{2})\s*[-–]\s*(\d{1,2}):(\d{2})/);
+    if (timeMatch && currentDay) {
+      const [, h1, m1, h2, m2] = timeMatch;
+      entries.push({
+        day: currentDay,
+        startTime: `${h1.padStart(2, "0")}:${m1}`,
+        endTime: `${h2.padStart(2, "0")}:${m2}`,
+      });
     }
   }
 
