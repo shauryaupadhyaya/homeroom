@@ -72,7 +72,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [scratchBoards, setScratchBoards] = useState<ScratchBoard[]>([
     { id: "sb1", name: "Scratch board", widgets: [], bgUrl: null },
   ]);
-  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -90,23 +89,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const loadDataFromSupabase = async () => {
     try {
-      setIsLoading(true);
       const [{ data: classesData }, { data: studentsData }] = await Promise.all([
         supabase.from("classes").select("*"),
         supabase.from("students").select("*"),
       ]);
 
       if (classesData?.length) {
+        const validColors: ("orange" | "sky" | "lime" | "pink" | "purple")[] = ["orange", "sky", "lime", "pink", "purple"];
         setClassesState(
-          classesData.map((c: any) => ({
-            id: c.id,
-            name: c.name,
-            subject: c.subject,
-            grade: Number(c.name.match(/\d+/)?.[0]) || 7,
-            color: c.color,
-            points: c.points || 0,
-            goal: c.goal || 480,
-          }))
+          classesData.map((c: any) => {
+            const color = validColors.includes(c.color) ? c.color : "orange";
+            return {
+              id: c.id,
+              name: c.name,
+              subject: c.subject,
+              grade: Number(c.name.match(/\d+/)?.[0]) || 7,
+              color,
+              points: c.points || 0,
+              goal: c.goal || 480,
+            };
+          })
         );
       }
 
@@ -124,8 +126,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("Failed to load data from Supabase:", error);
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -176,7 +176,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setClassesState((cs) => cs.map((c) => (c.id === classId ? { ...c, goal } : c))),
       addClass: async (name, subject) => {
         const classId = `c${Date.now()}`;
-        const newClass = { id: classId, name, grade: Number(name.match(/\d+/)?.[0]) || 7, subject, color: "orange", goal: 500, points: 0 };
+        const newClass: SchoolClass = { id: classId, name, grade: Number(name.match(/\d+/)?.[0]) || 7, subject, color: "orange", goal: 500, points: 0 };
         setClassesState((cs) => [...cs, newClass]);
 
         try {

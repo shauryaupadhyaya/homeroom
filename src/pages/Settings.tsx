@@ -1,7 +1,6 @@
 import { useState } from "react";
 import {
   UploadCloud,
-  Sparkles,
   Users,
   Target,
   UserCog,
@@ -10,15 +9,43 @@ import {
   Plus,
   Check,
   ChevronDown,
-  ImageUp,
   Sun,
   Moon,
   Upload,
   FileText,
+  AlertCircle,
 } from "lucide-react";
 import { useApp } from "../lib/store";
-import { supabase } from "../lib/supabase";
-import { Card, Button, Badge, Avatar, colorTokens } from "../components/ui";
+import { supabase, timetableApi, syllabusFilesApi } from "../lib/supabase";
+import { Card, Button, Avatar, colorTokens } from "../components/ui";
+
+function parseTimetableText(text: string): Array<{ day: string; startTime: string; endTime: string }> {
+  const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+  const entries: Array<{ day: string; startTime: string; endTime: string }> = [];
+
+  const lines = text.split("\n");
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    for (const day of days) {
+      if (trimmed.toLowerCase().includes(day.toLowerCase())) {
+        const timeMatch = trimmed.match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/);
+        if (timeMatch) {
+          const [, h1, m1, h2, m2] = timeMatch;
+          entries.push({
+            day,
+            startTime: `${h1.padStart(2, "0")}:${m1}`,
+            endTime: `${h2.padStart(2, "0")}:${m2}`,
+          });
+        }
+        break;
+      }
+    }
+  }
+
+  return entries;
+}
 
 type Tab = "profile" | "uploads" | "classes" | "goals";
 
@@ -65,13 +92,38 @@ function Uploads() {
   const { classes } = useApp();
   const [isUploading, setIsUploading] = useState(false);
   const [selectedClassesForSyllabus, setSelectedClassesForSyllabus] = useState<string[]>([]);
+  const [uploadMessage, setUploadMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [uploadedTimetables, setUploadedTimetables] = useState<any[]>([]);
+  const [uploadedSyllabi, setUploadedSyllabi] = useState<any[]>([]);
 
   const handleTimetableUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
     setIsUploading(true);
+    setUploadMessage(null);
     try {
-      alert("Timetable upload feature coming soon - for now use the sidebar to manage timetables");
+      const text = await file.text();
+      const entries = parseTimetableText(text);
+
+      if (entries.length === 0) {
+        setUploadMessage({ type: "error", text: "Could not parse any timetable entries. Format: 'Monday 09:00 - 10:00'" });
+        setIsUploading(false);
+        return;
+      }
+
+      for (const cls of classes) {
+        await timetableApi.deleteByClass(cls.id);
+        for (const entry of entries) {
+          await timetableApi.create(cls.id, entry.day, entry.startTime, entry.endTime);
+        }
+      }
+
+      setUploadMessage({ type: "success", text: `✓ Timetable uploaded for ${classes.length} classes with ${entries.length} entries` });
+      setUploadedTimetables(entries);
+      event.target.value = "";
+    } catch (error) {
+      console.error("Timetable upload failed:", error);
+      setUploadMessage({ type: "error", text: `Upload failed: ${error instanceof Error ? error.message : "Unknown error"}` });
     } finally {
       setIsUploading(false);
     }
@@ -80,12 +132,30 @@ function Uploads() {
   const handleSyllabusUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file || selectedClassesForSyllabus.length === 0) {
-      alert("Select at least one class");
+      setUploadMessage({ type: "error", text: "Select at least one class" });
       return;
     }
     setIsUploading(true);
+    setUploadMessage(null);
     try {
-      alert("Syllabus upload feature coming soon - for now use the sidebar to manage syllabi");
+      const filePath = `syllabi/${Date.now()}-${file.name}`;
+      const { error: uploadError } = await supabase.storage.from("syllabi").upload(filePath, file);
+      if (uploadError) throw uploadError;
+
+      const { data: fileData } = supabase.storage.from("syllabi").getPublicUrl(filePath);
+      const fileUrl = fileData.publicUrl;
+
+      for (const classId of selectedClassesForSyllabus) {
+        await syllabusFilesApi.create(classId, file.name, fileUrl, file.size);
+      }
+
+      setUploadMessage({ type: "success", text: `✓ Syllabus uploaded to ${selectedClassesForSyllabus.length} class(es)` });
+      setUploadedSyllabi([...uploadedSyllabi, { name: file.name, classes: selectedClassesForSyllabus.length }]);
+      setSelectedClassesForSyllabus([]);
+      event.target.value = "";
+    } catch (error) {
+      console.error("Syllabus upload failed:", error);
+      setUploadMessage({ type: "error", text: `Upload failed: ${error instanceof Error ? error.message : "Unknown error"}` });
     } finally {
       setIsUploading(false);
     }
@@ -99,6 +169,19 @@ function Uploads() {
 
   return (
     <div className="space-y-6">
+      {uploadMessage && (
+        <div
+          className={`flex items-start gap-3 rounded-lg border-2 p-4 ${
+            uploadMessage.type === "success"
+              ? "border-(--color-success) bg-(--color-success-100) text-(--color-success)"
+              : "border-(--color-danger) bg-(--color-danger-100) text-(--color-danger)"
+          }`}
+        >
+          <AlertCircle size={18} className="shrink-0 mt-0.5" />
+          <p className="text-sm font-bold">{uploadMessage.text}</p>
+        </div>
+      )}
+
       <Card>
         <h2 className="font-display text-lg font-semibold text-(--color-ink)">Upload Timetable</h2>
         <p className="mt-1 text-sm text-(--color-ink-muted)">Upload TXT, PDF, or image → converts to all classes</p>
@@ -106,20 +189,34 @@ function Uploads() {
           <Upload size={32} className="mx-auto mb-3 text-(--color-orange-500)" />
           <p className="mb-2 font-bold text-(--color-ink)">Drop timetable file or click to select</p>
           <p className="mb-4 text-xs text-(--color-ink-muted)">Formats: TXT, PDF, JPG, PNG</p>
-          <div className="inline-block">
-            <input
-              id="timetable-input"
-              type="file"
-              accept=".txt,.pdf,.jpg,.jpeg,.png"
-              onChange={handleTimetableUpload}
-              disabled={isUploading}
-              className="hidden"
-            />
-            <Button as="label" htmlFor="timetable-input" disabled={isUploading} className="cursor-pointer">
-              {isUploading ? "Processing..." : "Select File"}
-            </Button>
-          </div>
+          <input
+            id="timetable-input"
+            type="file"
+            accept=".txt,.pdf,.jpg,.jpeg,.png"
+            onChange={handleTimetableUpload}
+            disabled={isUploading}
+            className="hidden"
+          />
+          <button
+            onClick={() => document.getElementById("timetable-input")?.click()}
+            disabled={isUploading}
+            className="rounded-lg border-2 border-(--color-border) bg-(--color-orange-500) px-4 py-2.5 text-sm font-bold text-(--color-ink-on-accent) transition-all hover:shadow-hard-sm disabled:opacity-50"
+          >
+            {isUploading ? "Processing..." : "Select File"}
+          </button>
         </div>
+        {uploadedTimetables.length > 0 && (
+          <div className="mt-4">
+            <p className="text-xs font-bold uppercase text-(--color-ink-muted)">Uploaded entries</p>
+            <div className="mt-2 space-y-1">
+              {uploadedTimetables.map((entry, i) => (
+                <p key={i} className="text-sm text-(--color-ink)">
+                  {entry.day} · {entry.startTime} - {entry.endTime}
+                </p>
+              ))}
+            </div>
+          </div>
+        )}
       </Card>
 
       <Card>
@@ -153,25 +250,34 @@ function Uploads() {
           <FileText size={32} className="mx-auto mb-3 text-(--color-orange-500)" />
           <p className="mb-2 font-bold text-(--color-ink)">Drop syllabus PDF or click to select</p>
           <p className="mb-4 text-xs text-(--color-ink-muted)">Progress tracked for each class individually</p>
-          <div className="inline-block">
-            <input
-              id="syllabus-input"
-              type="file"
-              accept=".pdf"
-              onChange={handleSyllabusUpload}
-              disabled={isUploading || selectedClassesForSyllabus.length === 0}
-              className="hidden"
-            />
-            <Button
-              as="label"
-              htmlFor="syllabus-input"
-              disabled={isUploading || selectedClassesForSyllabus.length === 0}
-              className="cursor-pointer"
-            >
-              {isUploading ? "Uploading..." : "Select PDF"}
-            </Button>
-          </div>
+          <input
+            id="syllabus-input"
+            type="file"
+            accept=".pdf"
+            onChange={handleSyllabusUpload}
+            disabled={isUploading || selectedClassesForSyllabus.length === 0}
+            className="hidden"
+          />
+          <button
+            onClick={() => document.getElementById("syllabus-input")?.click()}
+            disabled={isUploading || selectedClassesForSyllabus.length === 0}
+            className="rounded-lg border-2 border-(--color-border) bg-(--color-orange-500) px-4 py-2.5 text-sm font-bold text-(--color-ink-on-accent) transition-all hover:shadow-hard-sm disabled:opacity-50"
+          >
+            {isUploading ? "Uploading..." : "Select PDF"}
+          </button>
         </div>
+        {uploadedSyllabi.length > 0 && (
+          <div className="mt-4">
+            <p className="text-xs font-bold uppercase text-(--color-ink-muted)">Uploaded syllabi</p>
+            <div className="mt-2 space-y-1">
+              {uploadedSyllabi.map((item, i) => (
+                <p key={i} className="text-sm text-(--color-ink)">
+                  {item.name} · {item.classes} class(es)
+                </p>
+              ))}
+            </div>
+          </div>
+        )}
       </Card>
     </div>
   );
