@@ -1,8 +1,3 @@
-/**
- * Supabase Edge Function for AI-powered document extraction
- * Currently using mock data for testing UI workflow
- */
-
 interface TimetableEntry {
   day: string;
   start_time: string;
@@ -29,63 +24,95 @@ interface ExtractionResult {
   processing_notes: string[];
 }
 
-async function extractTimetableWithHF(imageData: string): Promise<TimetableEntry[]> {
+async function extractTimetableWithGoogleVision(imageData: string): Promise<TimetableEntry[]> {
   try {
-    const hfToken = Deno.env.get("HUGGINGFACE_API_KEY");
-    if (!hfToken) {
-      console.warn("Hugging Face API key not configured, using mock data");
+    const apiKey = Deno.env.get("GOOGLE_VISION_API_KEY");
+    if (!apiKey) {
+      console.warn("Google Vision API key not configured");
       return generateMockTimetable();
     }
 
-    // Use Hugging Face's document understanding model for OCR
+    // Call Google Cloud Vision API for text detection
     const response = await fetch(
-      "https://api-inference.huggingface.co/models/microsoft/table-transformer-detection",
+      `https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`,
       {
-        headers: { Authorization: `Bearer ${hfToken}` },
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          inputs: imageData,
-          parameters: { wait_for_model: true }
-        }),
+          requests: [
+            {
+              image: { content: imageData },
+              features: [
+                { type: "TEXT_DETECTION" },
+                { type: "DOCUMENT_TEXT_DETECTION" }
+              ]
+            }
+          ]
+        })
       }
     );
 
     if (!response.ok) {
-      console.warn("HF extraction failed, using mock data");
+      console.warn("Google Vision API call failed:", response.status);
       return generateMockTimetable();
     }
 
-    const result = await response.json() as any[];
+    const result = await response.json() as any;
+    const annotations = result.responses?.[0]?.textAnnotations || [];
 
-    // Parse extracted table data into timetable entries
-    const entries: TimetableEntry[] = [];
-
-    // Look for schedule patterns in the extracted data
-    if (Array.isArray(result) && result.length > 0) {
-      result.forEach((item: any, idx: number) => {
-        if (item.label && item.score > 0.5) {
-          // Attempt to parse structured data
-          const dayMatch = item.label?.match(/monday|tuesday|wednesday|thursday|friday/i);
-          const timeMatch = item.label?.match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/);
-
-          if (dayMatch && timeMatch) {
-            entries.push({
-              day: dayMatch[0].charAt(0).toUpperCase() + dayMatch[0].slice(1).toLowerCase(),
-              start_time: `${timeMatch[1].padStart(2,'0')}:${timeMatch[2]}`,
-              end_time: `${timeMatch[3].padStart(2,'0')}:${timeMatch[4]}`,
-              subject: item.label?.split(/monday|tuesday|wednesday|thursday|friday/i)[1]?.trim() || "Subject",
-              teacher: "Teacher",
-              room: "Room",
-              confidence: Math.min(0.95, item.score || 0.85)
-            });
-          }
-        }
-      });
+    if (!annotations.length) {
+      console.warn("No text detected in image");
+      return generateMockTimetable();
     }
 
+    // Extract full text from the first annotation (contains all text)
+    const fullText = annotations[0]?.description || "";
+    console.log("Google Vision extracted text:", fullText.substring(0, 300));
+
+    // Parse extracted text into timetable entries
+    const entries: TimetableEntry[] = [];
+    const lines = fullText.split('\n').filter((l: string) => l.trim().length > 0);
+
+    const dayPattern = /\b(monday|tuesday|wednesday|thursday|friday)\b/i;
+    const timePattern = /(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/;
+
+    for (const line of lines) {
+      const dayMatch = line.match(dayPattern);
+      const timeMatch = line.match(timePattern);
+
+      if (dayMatch && timeMatch) {
+        // Extract parts from the line
+        const parts = line.split(/[\s,]+/).filter((p: string) => p.length > 0);
+
+        // Find subject (usually between time and teacher/room)
+        let subject = "Subject";
+        let teacher = "Teacher";
+        let room = "Room";
+
+        const timePart = `${timeMatch[1]}:${timeMatch[2]}-${timeMatch[3]}:${timeMatch[4]}`;
+        const restOfLine = line.replace(dayMatch[0], "").replace(timePattern, "").trim();
+        const restParts = restOfLine.split(/[\s,]+/).filter((p: string) => p.length > 1);
+
+        if (restParts.length > 0) subject = restParts[0];
+        if (restParts.length > 1) teacher = restParts[1];
+        if (restParts.length > 2) room = restParts[restParts.length - 1];
+
+        entries.push({
+          day: dayMatch[1].charAt(0).toUpperCase() + dayMatch[1].slice(1).toLowerCase(),
+          start_time: `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}`,
+          end_time: `${timeMatch[3].padStart(2, '0')}:${timeMatch[4]}`,
+          subject,
+          teacher,
+          room,
+          confidence: 0.85
+        });
+      }
+    }
+
+    console.log(`Google Vision extracted ${entries.length} timetable entries`);
     return entries.length > 0 ? entries : generateMockTimetable();
   } catch (error) {
-    console.error("HF extraction error:", error);
+    console.error("Google Vision extraction error:", error);
     return generateMockTimetable();
   }
 }
@@ -103,17 +130,17 @@ function generateMockTimetable(): TimetableEntry[] {
 
 function generateMockSyllabus(): SyllabusSection[] {
   return [
-    { 
-      name: "Unit 1: Introduction", 
-      confidence: 0.95, 
+    {
+      name: "Unit 1: Introduction",
+      confidence: 0.95,
       topics: [
         { name: "1.1 Fundamentals", confidence: 0.93, learning_objectives: ["Understand basics", "Learn key concepts"] },
         { name: "1.2 Advanced Topics", confidence: 0.90, learning_objectives: ["Apply knowledge", "Solve problems"] },
       ]
     },
-    { 
-      name: "Unit 2: Practical Application", 
-      confidence: 0.92, 
+    {
+      name: "Unit 2: Practical Application",
+      confidence: 0.92,
       topics: [
         { name: "2.1 Case Studies", confidence: 0.91, learning_objectives: ["Analyze examples", "Draw conclusions"] },
         { name: "2.2 Exercises", confidence: 0.88, learning_objectives: ["Practice skills", "Build confidence"] },
@@ -150,14 +177,16 @@ Deno.serve(async (req) => {
     let result: ExtractionResult;
 
     if (document_type === "timetable") {
-      const extracted_data = await extractTimetableWithHF(image_data);
+      const extracted_data = await extractTimetableWithGoogleVision(image_data);
+      const isRealExtraction = extracted_data.length > 0 && !extracted_data[0].subject.includes("English");
+
       result = {
         success: true,
         document_type: "timetable",
         extracted_data,
-        validation_warnings: extracted_data.length === 0 ? ["No entries detected - verify image clarity"] : [],
-        extraction_confidence: extracted_data.length > 0 ? 0.85 : 0.5,
-        processing_notes: [Deno.env.get("HUGGINGFACE_API_KEY") ? "Hugging Face extraction" : "Fallback mock data"],
+        validation_warnings: extracted_data.length === 0 ? ["No schedule detected - verify image quality"] : [],
+        extraction_confidence: isRealExtraction ? 0.85 : 0.5,
+        processing_notes: [isRealExtraction ? "Google Cloud Vision extraction" : "Fallback mock data"],
       };
     } else if (document_type === "syllabus") {
       result = {
@@ -166,7 +195,7 @@ Deno.serve(async (req) => {
         extracted_data: generateMockSyllabus(),
         validation_warnings: [],
         extraction_confidence: 0.90,
-        processing_notes: ["Syllabus extraction - ready for HF integration"],
+        processing_notes: ["Syllabus extraction - mock data"],
       };
     } else {
       return new Response(JSON.stringify({ error: "Unknown document type" }), {
