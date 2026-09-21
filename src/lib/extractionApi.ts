@@ -12,6 +12,24 @@ export interface ExtractionResult {
   processing_notes: string[];
 }
 
+export type TimetableEntry = {
+  day: string;
+  start_time: string;
+  end_time: string;
+  class?: string;
+  subject: string;
+  teacher?: string;
+  room?: string;
+  confidence: number;
+};
+
+export type SyllabusSection = {
+  name: string;
+  topics?: SyllabusSection[];
+  learning_objectives?: string[];
+  confidence?: number;
+};
+
 export async function extractDocument(
   documentType: "timetable" | "syllabus",
   imageData: string,
