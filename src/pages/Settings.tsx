@@ -57,12 +57,16 @@ async function callExtractionAPI(
   classIds?: string[]
 ): Promise<ExtractionResult> {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
   if (!supabaseUrl) throw new Error("Supabase URL not configured");
 
   const functionUrl = `${supabaseUrl}/functions/v1/extract-document`;
   const response = await fetch(functionUrl, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(anonKey && { "Authorization": `Bearer ${anonKey}` }),
+    },
     body: JSON.stringify({
       document_type: documentType,
       image_data: imageData,
