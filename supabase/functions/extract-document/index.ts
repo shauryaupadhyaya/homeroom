@@ -1,16 +1,14 @@
 /**
  * Supabase Edge Function for AI-powered document extraction
- * Handles timetable and syllabus extraction using Claude Vision API
+ * Handles timetable and syllabus extraction using Replicate API
  *
  * This function:
  * 1. Converts image/PDF to base64 for processing
- * 2. Calls Claude Vision for document understanding
+ * 2. Calls Replicate Vision API for document understanding
  * 3. Extracts structured JSON (timetable entries or syllabus sections)
  * 4. Validates output and provides confidence scores
  * 5. Returns structured data for teacher review UI
  */
-
-import Anthropic from "@anthropic-ai/sdk";
 
 interface TimetableEntry {
   day: string;
@@ -40,9 +38,41 @@ interface ExtractionResult {
   processing_notes: string[];
 }
 
-const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
-const anthropic = apiKey ? new Anthropic({ apiKey }) : null;
-const USE_MOCK = !apiKey;
+const replicateToken = Deno.env.get("REPLICATE_API_TOKEN");
+const USE_MOCK = !replicateToken;
+
+async function callReplicateAPI(imageUrl: string, prompt: string): Promise<string> {
+  const response = await fetch("https://api.replicate.com/v1/predictions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Token ${replicateToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      version: "9f1b897b63d8f25190b1e0327919b2589d12d296c33900ac2e18b75ac6f07139", // llava-13b
+      input: {
+        image: imageUrl,
+        prompt: prompt,
+      },
+    }),
+  });
+
+  const prediction = await response.json();
+  if (!response.ok) throw new Error(`Replicate API error: ${prediction.detail}`);
+
+  // Poll for completion
+  let result = prediction;
+  while (result.status === "processing") {
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    const pollResponse = await fetch(`https://api.replicate.com/v1/predictions/${result.id}`, {
+      headers: { "Authorization": `Token ${replicateToken}` },
+    });
+    result = await pollResponse.json();
+  }
+
+  if (result.status === "failed") throw new Error(`Replicate processing failed: ${result.error}`);
+  return result.output?.join("") || "";
+}
 
 function generateMockTimetable(): TimetableEntry[] {
   return [
@@ -150,9 +180,11 @@ async function extractTimetable(
   imageData: string,
   _classIds?: string[]
 ): Promise<ExtractionResult> {
-  if (!anthropic) {
+  if (!replicateToken) {
     return generateMockTimetableResult();
   }
+
+  const imageUrl = `data:image/jpeg;base64,${imageData}`;
 
   const prompt = `Extract timetable data from this image. Return ONLY a JSON array with this structure:
 [
@@ -168,66 +200,48 @@ Rules:
 - Return [] if no timetable found
 - Return ONLY JSON, no other text`;
 
-  const message = await anthropic.messages.create({
-    model: "claude-3-5-sonnet-20241022",
-    max_tokens: 4096,
-    messages: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "image",
-            source: {
-              type: "base64",
-              media_type: "image/jpeg",
-              data: imageData,
-            },
-          },
-          {
-            type: "text",
-            text: prompt,
-          },
-        ],
-      },
-    ],
-  });
-
-  const responseText =
-    message.content[0].type === "text" ? message.content[0].text : "";
-
-  let entries: TimetableEntry[] = [];
   try {
-    entries = JSON.parse(responseText);
-  } catch {
-    const jsonMatch = responseText.match(/\[[\s\S]*\]/);
-    if (jsonMatch) {
-      entries = JSON.parse(jsonMatch[0]);
+    const responseText = await callReplicateAPI(imageUrl, prompt);
+
+    let entries: TimetableEntry[] = [];
+    try {
+      entries = JSON.parse(responseText);
+    } catch {
+      const jsonMatch = responseText.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        entries = JSON.parse(jsonMatch[0]);
+      }
     }
+
+    const warnings = validateTimetable(entries);
+    const avgConfidence =
+      entries.length > 0
+        ? entries.reduce((sum, e) => sum + e.confidence, 0) / entries.length
+        : 0;
+
+    return {
+      success: true,
+      document_type: "timetable",
+      extracted_data: entries,
+      validation_warnings: warnings,
+      extraction_confidence: avgConfidence,
+      processing_notes: [
+        `Extracted ${entries.length} timetable entries`,
+        `Average confidence: ${(avgConfidence * 100).toFixed(0)}%`,
+      ],
+    };
+  } catch (error) {
+    console.error("Timetable extraction error:", error);
+    return generateMockTimetableResult();
   }
-
-  const warnings = validateTimetable(entries);
-  const avgConfidence =
-    entries.length > 0
-      ? entries.reduce((sum, e) => sum + e.confidence, 0) / entries.length
-      : 0;
-
-  return {
-    success: true,
-    document_type: "timetable",
-    extracted_data: entries,
-    validation_warnings: warnings,
-    extraction_confidence: avgConfidence,
-    processing_notes: [
-      `Extracted ${entries.length} timetable entries`,
-      `Average confidence: ${(avgConfidence * 100).toFixed(0)}%`,
-    ],
-  };
 }
 
 async function extractSyllabus(imageData: string): Promise<ExtractionResult> {
-  if (!anthropic) {
+  if (!replicateToken) {
     return generateMockSyllabusResult();
   }
+
+  const imageUrl = `data:image/jpeg;base64,${imageData}`;
 
   const prompt = `Extract syllabus structure from this document. Return ONLY JSON:
 {
@@ -245,58 +259,38 @@ Rules:
 - confidence: 0-1 per element
 - Return ONLY JSON, no other text`;
 
-  const message = await anthropic.messages.create({
-    model: "claude-3-5-sonnet-20241022",
-    max_tokens: 4096,
-    messages: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "image",
-            source: {
-              type: "base64",
-              media_type: "image/jpeg",
-              data: imageData,
-            },
-          },
-          {
-            type: "text",
-            text: prompt,
-          },
-        ],
-      },
-    ],
-  });
-
-  const responseText =
-    message.content[0].type === "text" ? message.content[0].text : "";
-
-  let sections: SyllabusSection[] = [];
   try {
-    const parsed = JSON.parse(responseText);
-    sections = parsed.sections || [];
-  } catch {
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
+    const responseText = await callReplicateAPI(imageUrl, prompt);
+
+    let sections: SyllabusSection[] = [];
+    try {
+      const parsed = JSON.parse(responseText);
       sections = parsed.sections || [];
+    } catch {
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        sections = parsed.sections || [];
+      }
     }
+
+    const warnings = validateSyllabus(sections);
+
+    return {
+      success: true,
+      document_type: "syllabus",
+      extracted_data: sections,
+      validation_warnings: warnings,
+      extraction_confidence: 0.85,
+      processing_notes: [
+        `Extracted ${sections.length} main sections`,
+        "Hierarchy preserved from source",
+      ],
+    };
+  } catch (error) {
+    console.error("Syllabus extraction error:", error);
+    return generateMockSyllabusResult();
   }
-
-  const warnings = validateSyllabus(sections);
-
-  return {
-    success: true,
-    document_type: "syllabus",
-    extracted_data: sections,
-    validation_warnings: warnings,
-    extraction_confidence: 0.85,
-    processing_notes: [
-      `Extracted ${sections.length} main sections`,
-      "Hierarchy preserved from source",
-    ],
-  };
 }
 
 function validateTimetable(entries: TimetableEntry[]): string[] {
