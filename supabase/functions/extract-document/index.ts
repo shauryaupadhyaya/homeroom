@@ -39,7 +39,29 @@ interface ExtractionResult {
 }
 
 const replicateToken = Deno.env.get("REPLICATE_API_TOKEN");
+const supabaseUrl = Deno.env.get("SUPABASE_URL");
+const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 const USE_MOCK = !replicateToken;
+
+async function uploadImageToStorage(imageData: string): Promise<string> {
+  const fileName = `extraction-${Date.now()}.jpg`;
+  const imageBinary = Uint8Array.from(atob(imageData), c => c.charCodeAt(0));
+
+  const uploadResponse = await fetch(`${supabaseUrl}/storage/v1/object/extraction-temp/${fileName}`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${supabaseServiceKey}`,
+      "Content-Type": "image/jpeg",
+    },
+    body: imageBinary,
+  });
+
+  if (!uploadResponse.ok) {
+    throw new Error(`Failed to upload image: ${await uploadResponse.text()}`);
+  }
+
+  return `${supabaseUrl}/storage/v1/object/public/extraction-temp/${fileName}`;
+}
 
 async function callReplicateAPI(imageUrl: string, prompt: string): Promise<string> {
   const response = await fetch("https://api.replicate.com/v1/predictions", {
@@ -58,7 +80,7 @@ async function callReplicateAPI(imageUrl: string, prompt: string): Promise<strin
   });
 
   const prediction = await response.json();
-  if (!response.ok) throw new Error(`Replicate API error: ${prediction.detail}`);
+  if (!response.ok) throw new Error(`Replicate API error: ${JSON.stringify(prediction)}`);
 
   // Poll for completion
   let result = prediction;
@@ -70,7 +92,7 @@ async function callReplicateAPI(imageUrl: string, prompt: string): Promise<strin
     result = await pollResponse.json();
   }
 
-  if (result.status === "failed") throw new Error(`Replicate processing failed: ${result.error}`);
+  if (result.status === "failed") throw new Error(`Replicate processing failed: ${JSON.stringify(result.error)}`);
   return result.output?.join("") || "";
 }
 
@@ -184,7 +206,7 @@ async function extractTimetable(
     return generateMockTimetableResult();
   }
 
-  const imageUrl = `data:image/jpeg;base64,${imageData}`;
+  const imageUrl = await uploadImageToStorage(imageData);
 
   const prompt = `Extract timetable data from this image. Return ONLY a JSON array with this structure:
 [
@@ -241,7 +263,7 @@ async function extractSyllabus(imageData: string): Promise<ExtractionResult> {
     return generateMockSyllabusResult();
   }
 
-  const imageUrl = `data:image/jpeg;base64,${imageData}`;
+  const imageUrl = await uploadImageToStorage(imageData);
 
   const prompt = `Extract syllabus structure from this document. Return ONLY JSON:
 {
