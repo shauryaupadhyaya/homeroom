@@ -1,3 +1,5 @@
+import { Tesseract } from "npm:tesseract.js@5.0.4";
+
 interface TimetableEntry {
   day: string;
   start_time: string;
@@ -24,54 +26,24 @@ interface ExtractionResult {
   processing_notes: string[];
 }
 
-async function extractTimetableWithGoogleVision(imageData: string): Promise<TimetableEntry[]> {
+async function extractTimetableWithTesseract(imageData: string): Promise<TimetableEntry[]> {
   try {
-    const apiKey = Deno.env.get("GOOGLE_VISION_API_KEY");
-    if (!apiKey) {
-      console.warn("Google Vision API key not configured");
-      return generateMockTimetable();
-    }
+    console.log("Starting Tesseract OCR extraction...");
 
-    // Call Google Cloud Vision API for text detection
-    const response = await fetch(
-      `https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          requests: [
-            {
-              image: { content: imageData },
-              features: [
-                { type: "TEXT_DETECTION" },
-                { type: "DOCUMENT_TEXT_DETECTION" }
-              ]
-            }
-          ]
-        })
-      }
-    );
+    // Create worker for Tesseract
+    const worker = await Tesseract.createWorker();
 
-    if (!response.ok) {
-      console.warn("Google Vision API call failed:", response.status);
-      return generateMockTimetable();
-    }
+    // Recognize text from base64 image
+    const result = await worker.recognize(`data:image/png;base64,${imageData}`);
+    const fullText = result.data.text;
 
-    const result = await response.json() as any;
-    const annotations = result.responses?.[0]?.textAnnotations || [];
+    await worker.terminate();
 
-    if (!annotations.length) {
-      console.warn("No text detected in image");
-      return generateMockTimetable();
-    }
-
-    // Extract full text from the first annotation (contains all text)
-    const fullText = annotations[0]?.description || "";
-    console.log("Google Vision extracted text:", fullText.substring(0, 300));
+    console.log("Tesseract extracted text:", fullText.substring(0, 500));
 
     // Parse extracted text into timetable entries
     const entries: TimetableEntry[] = [];
-    const lines = fullText.split('\n').filter((l: string) => l.trim().length > 0);
+    const lines = fullText.split('\n').filter((l: string) => l.trim().length > 3);
 
     const dayPattern = /\b(monday|tuesday|wednesday|thursday|friday)\b/i;
     const timePattern = /(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/;
@@ -81,39 +53,34 @@ async function extractTimetableWithGoogleVision(imageData: string): Promise<Time
       const timeMatch = line.match(timePattern);
 
       if (dayMatch && timeMatch) {
-        // Extract parts from the line
-        const parts = line.split(/[\s,]+/).filter((p: string) => p.length > 0);
+        // Extract parts
+        const restOfLine = line
+          .replace(dayMatch[0], "")
+          .replace(timePattern, "")
+          .trim();
+        const parts = restOfLine.split(/[\s,|]+/).filter((p: string) => p.length > 1);
 
-        // Find subject (usually between time and teacher/room)
-        let subject = "Subject";
-        let teacher = "Teacher";
-        let room = "Room";
-
-        const timePart = `${timeMatch[1]}:${timeMatch[2]}-${timeMatch[3]}:${timeMatch[4]}`;
-        const restOfLine = line.replace(dayMatch[0], "").replace(timePattern, "").trim();
-        const restParts = restOfLine.split(/[\s,]+/).filter((p: string) => p.length > 1);
-
-        if (restParts.length > 0) subject = restParts[0];
-        if (restParts.length > 1) teacher = restParts[1];
-        if (restParts.length > 2) room = restParts[restParts.length - 1];
+        let subject = parts[0] || "Subject";
+        let teacher = parts[1] || "Teacher";
+        let room = parts.length > 2 ? parts[parts.length - 1] : "Room";
 
         entries.push({
           day: dayMatch[1].charAt(0).toUpperCase() + dayMatch[1].slice(1).toLowerCase(),
           start_time: `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}`,
           end_time: `${timeMatch[3].padStart(2, '0')}:${timeMatch[4]}`,
-          subject,
-          teacher,
-          room,
-          confidence: 0.85
+          subject: subject.replace(/[^a-zA-Z\s]/g, ''),
+          teacher: teacher.replace(/[^a-zA-Z\s]/g, ''),
+          room: room.replace(/[^a-zA-Z0-9\s]/g, ''),
+          confidence: 0.82
         });
       }
     }
 
-    console.log(`Google Vision extracted ${entries.length} timetable entries`);
-    return entries.length > 0 ? entries : generateMockTimetable();
+    console.log(`Tesseract extracted ${entries.length} timetable entries`);
+    return entries;
   } catch (error) {
-    console.error("Google Vision extraction error:", error);
-    return generateMockTimetable();
+    console.error("Tesseract extraction error:", error);
+    return [];
   }
 }
 
@@ -177,16 +144,15 @@ Deno.serve(async (req) => {
     let result: ExtractionResult;
 
     if (document_type === "timetable") {
-      const extracted_data = await extractTimetableWithGoogleVision(image_data);
-      const isRealExtraction = extracted_data.length > 0 && !extracted_data[0].subject.includes("English");
+      const extracted_data = await extractTimetableWithTesseract(image_data);
 
       result = {
         success: true,
         document_type: "timetable",
-        extracted_data,
-        validation_warnings: extracted_data.length === 0 ? ["No schedule detected - verify image quality"] : [],
-        extraction_confidence: isRealExtraction ? 0.85 : 0.5,
-        processing_notes: [isRealExtraction ? "Google Cloud Vision extraction" : "Fallback mock data"],
+        extracted_data: extracted_data.length > 0 ? extracted_data : generateMockTimetable(),
+        validation_warnings: extracted_data.length === 0 ? ["No schedule detected in image - using fallback"] : [],
+        extraction_confidence: extracted_data.length > 0 ? 0.82 : 0.0,
+        processing_notes: [extracted_data.length > 0 ? "Tesseract OCR extraction (FREE)" : "Fallback mock data"],
       };
     } else if (document_type === "syllabus") {
       result = {
@@ -212,7 +178,7 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     console.error("Error:", error);
-    return new Response(JSON.stringify({ error: "Internal server error" }), {
+    return new Response(JSON.stringify({ error: "Internal server error", details: String(error) }), {
       status: 500,
       headers: { "Content-Type": "application/json" },
     });
