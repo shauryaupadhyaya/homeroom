@@ -14,123 +14,68 @@ import {
   Upload,
   FileText,
   AlertCircle,
+  Loader,
+  AlertTriangle,
+  ChevronRight,
 } from "lucide-react";
 import { useApp } from "../lib/store";
 import { supabase, timetableApi, syllabusFilesApi } from "../lib/supabase";
 import { Card, Button, Avatar, colorTokens } from "../components/ui";
+import { fileToBase64 } from "../lib/extractionApi";
 
-async function extractPDFText(file: File): Promise<string> {
-  try {
-    const arrayBuffer = await file.arrayBuffer();
-    const pdf = await (window as any).pdfjsLib?.getDocument(arrayBuffer).promise;
-    if (!pdf) return "";
-
-    let text = "";
-    for (let i = 1; i <= Math.min(pdf.numPages, 5); i++) {
-      const page = await pdf.getPage(i);
-      const content = await page.getTextContent();
-      text += content.items.map((item: any) => item.str).join(" ") + "\n";
-    }
-    return text;
-  } catch (e) {
-    return "";
-  }
+// Type definitions for AI extraction results
+interface ExtractionResult {
+  success: boolean;
+  document_type: string;
+  extracted_data: any[];
+  validation_warnings: string[];
+  extraction_confidence: number;
+  processing_notes: string[];
 }
 
-function extractChapters(text: string): string[] {
-  const chapters: string[] = [];
-  const lines = text.split("\n");
-  const chapterRegex = /^(Chapter|Part|Unit|Section|Module)\s+\d+/i;
-  const numberedRegex = /^\d+\.\s+[A-Z]/;
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.length < 5) continue;
-
-    if (chapterRegex.test(trimmed) || numberedRegex.test(trimmed)) {
-      chapters.push(trimmed.substring(0, 80));
-    }
-  }
-
-  return chapters.length > 0 ? chapters.slice(0, 10) : ["PDF uploaded - chapters auto-detected"];
+interface TimetableEntry {
+  day: string;
+  start_time: string;
+  end_time: string;
+  class?: string;
+  subject: string;
+  teacher?: string;
+  room?: string;
+  confidence: number;
 }
 
-function parseTimetableText(text: string): Array<{ day: string; startTime: string; endTime: string }> {
-  const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-  const dayShorts = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-  const entries: Array<{ day: string; startTime: string; endTime: string }> = [];
+interface SyllabusSection {
+  name: string;
+  topics?: SyllabusSection[];
+  learning_objectives?: string[];
+  confidence?: number;
+}
 
-  const lines = text.split("\n").map(l => l.trim()).filter(l => l);
-  if (lines.length === 0) return entries;
+async function callExtractionAPI(
+  documentType: "timetable" | "syllabus",
+  imageData: string,
+  classIds?: string[]
+): Promise<ExtractionResult> {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  if (!supabaseUrl) throw new Error("Supabase URL not configured");
 
-  const timePattern = /(\d{1,2}):(\d{2})\s*[-–]\s*(\d{1,2}):(\d{2})/;
+  const functionUrl = `${supabaseUrl}/functions/v1/extract-document`;
+  const response = await fetch(functionUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      document_type: documentType,
+      image_data: imageData,
+      class_ids: classIds,
+    }),
+  });
 
-  const firstLine = lines[0].toLowerCase();
-  const isTableFormat = days.some(d => firstLine.includes(d.toLowerCase())) ||
-                        dayShorts.some(d => firstLine.includes(d.toLowerCase()));
-
-  if (isTableFormat) {
-    const headerCells = lines[0].split(/\t|,/).map(c => c.trim());
-    const dayIndices: Record<string, number> = {};
-
-    for (let i = 0; i < headerCells.length; i++) {
-      for (const day of days) {
-        if (headerCells[i].toLowerCase().includes(day.toLowerCase())) {
-          dayIndices[day] = i;
-          break;
-        }
-      }
-      for (const day of dayShorts) {
-        if (headerCells[i].toLowerCase().includes(day.toLowerCase())) {
-          const fullDay = days[dayShorts.indexOf(day)];
-          dayIndices[fullDay] = i;
-          break;
-        }
-      }
-    }
-
-    for (let i = 1; i < lines.length; i++) {
-      const cells = lines[i].split(/\t|,/).map(c => c.trim());
-      const timeCell = cells[0];
-      const timeMatch = timeCell.match(timePattern);
-
-      if (timeMatch) {
-        const [, h1, m1, h2, m2] = timeMatch;
-        const startTime = `${h1.padStart(2, "0")}:${m1}`;
-        const endTime = `${h2.padStart(2, "0")}:${m2}`;
-
-        for (const [day, dayIdx] of Object.entries(dayIndices)) {
-          if (cells[dayIdx]) {
-            entries.push({ day, startTime, endTime });
-          }
-        }
-      }
-    }
-    return entries;
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || "Extraction failed");
   }
 
-  let currentDay = "";
-  for (const line of lines) {
-    for (let i = 0; i < days.length; i++) {
-      if (line.toLowerCase().startsWith(days[i].toLowerCase()) ||
-          line.toLowerCase().startsWith(dayShorts[i].toLowerCase())) {
-        currentDay = days[i];
-        break;
-      }
-    }
-
-    const timeMatch = line.match(timePattern);
-    if (timeMatch && currentDay) {
-      const [, h1, m1, h2, m2] = timeMatch;
-      entries.push({
-        day: currentDay,
-        startTime: `${h1.padStart(2, "0")}:${m1}`,
-        endTime: `${h2.padStart(2, "0")}:${m2}`,
-      });
-    }
-  }
-
-  return entries;
+  return response.json();
 }
 
 type Tab = "profile" | "uploads" | "classes" | "goals";
@@ -177,51 +122,61 @@ export function Settings() {
 function Uploads() {
   const { classes } = useApp();
   const [isUploading, setIsUploading] = useState(false);
+  const [isExtracting, setIsExtracting] = useState(false);
   const [selectedClassesForSyllabus, setSelectedClassesForSyllabus] = useState<string[]>([]);
   const [uploadMessage, setUploadMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
-  const [uploadedTimetables, setUploadedTimetables] = useState<any[]>([]);
+  const [extractionProgress, setExtractionProgress] = useState("");
+  const [uploadedTimetables, setUploadedTimetables] = useState<TimetableEntry[]>([]);
   const [uploadedSyllabi, setUploadedSyllabi] = useState<any[]>([]);
-  const [timetablePreview, setTimetablePreview] = useState<{ filename: string; entries: any[] } | null>(null);
-  const [syllabusPreview, setSyllabusPreview] = useState<{ filename: string; classIds: string[]; chapters: string[] } | null>(null);
+  const [timetableResult, setTimetableResult] = useState<ExtractionResult | null>(null);
+  const [syllabusResult, setSyllabusResult] = useState<ExtractionResult | null>(null);
+  const [timetableFile, setTimetableFile] = useState<File | null>(null);
+  const [syllabusFile, setSyllabusFile] = useState<File | null>(null);
 
   const handleTimetableUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    setIsUploading(true);
+    setIsExtracting(true);
     setUploadMessage(null);
+    setExtractionProgress("Analyzing timetable image...");
+
     try {
-      const text = await file.text();
-      const entries = parseTimetableText(text);
+      const imageData = await fileToBase64(file);
+      setExtractionProgress("Extracting timetable data with AI...");
+      const result = await callExtractionAPI("timetable", imageData, classes.map(c => c.id));
 
-      if (entries.length === 0) {
-        setUploadMessage({ type: "error", text: "Could not parse any timetable entries. Format: 'Day HH:MM - HH:MM'" });
-        setIsUploading(false);
-        return;
+      if (!result.success || result.extracted_data.length === 0) {
+        setUploadMessage({ type: "error", text: "No timetable data extracted. Try a clearer image." });
+        event.target.value = "";
+      } else {
+        setTimetableFile(file);
+        setTimetableResult(result);
       }
-
-      setTimetablePreview({ filename: file.name, entries });
-      event.target.value = "";
     } catch (error) {
-      console.error("Timetable upload failed:", error);
-      setUploadMessage({ type: "error", text: `Upload failed: ${error instanceof Error ? error.message : "Unknown error"}` });
+      console.error("Timetable extraction failed:", error);
+      setUploadMessage({ type: "error", text: `Extraction failed: ${error instanceof Error ? error.message : "Unknown error"}` });
     } finally {
-      setIsUploading(false);
+      setIsExtracting(false);
+      setExtractionProgress("");
+      event.target.value = "";
     }
   };
 
   const confirmTimetableUpload = async () => {
-    if (!timetablePreview) return;
+    if (!timetableResult) return;
     setIsUploading(true);
     try {
+      const entries = timetableResult.extracted_data as TimetableEntry[];
       for (const cls of classes) {
         await timetableApi.deleteByClass(cls.id);
-        for (const entry of timetablePreview.entries) {
-          await timetableApi.create(cls.id, entry.day, entry.startTime, entry.endTime);
+        for (const entry of entries) {
+          await timetableApi.create(cls.id, entry.day, entry.start_time, entry.end_time);
         }
       }
-      setUploadMessage({ type: "success", text: `✓ Timetable saved for ${classes.length} classes (${timetablePreview.entries.length} periods)` });
-      setUploadedTimetables(timetablePreview.entries);
-      setTimetablePreview(null);
+      setUploadMessage({ type: "success", text: `✓ Timetable saved for ${classes.length} classes (${entries.length} periods)` });
+      setUploadedTimetables(entries);
+      setTimetableResult(null);
+      setTimetableFile(null);
     } catch (error) {
       console.error("Timetable save failed:", error);
       setUploadMessage({ type: "error", text: `Save failed: ${error instanceof Error ? error.message : "Unknown error"}` });
@@ -237,54 +192,48 @@ function Uploads() {
       return;
     }
 
-    setIsUploading(true);
-    let chapters: string[] = [];
+    setIsExtracting(true);
+    setUploadMessage(null);
+    setExtractionProgress("Analyzing syllabus...");
 
-    if (file.type === "application/pdf") {
-      const pdfText = await extractPDFText(file);
-      chapters = extractChapters(pdfText);
-    } else if (file.type.startsWith("image/")) {
-      chapters = ["Image uploaded - chapters extracted from file"];
-    } else if (file.type.includes("document") || file.type.includes("text")) {
-      try {
-        const text = await file.text();
-        chapters = extractChapters(text);
-      } catch (e) {
-        chapters = ["File uploaded - auto-detected syllabus"];
-      }
-    } else {
-      chapters = ["File uploaded - syllabus ready to add"];
+    try {
+      const imageData = await fileToBase64(file);
+      setExtractionProgress("Extracting syllabus structure with AI...");
+      const result = await callExtractionAPI("syllabus", imageData, selectedClassesForSyllabus);
+
+      setSyllabusFile(file);
+      setSyllabusResult(result);
+    } catch (error) {
+      console.error("Syllabus extraction failed:", error);
+      setUploadMessage({ type: "error", text: `Extraction failed: ${error instanceof Error ? error.message : "Unknown error"}` });
+    } finally {
+      setIsExtracting(false);
+      setExtractionProgress("");
+      event.target.value = "";
     }
-
-    setSyllabusPreview({ filename: file.name, classIds: selectedClassesForSyllabus, chapters });
-    setIsUploading(false);
-    event.target.value = "";
   };
 
   const confirmSyllabusUpload = async () => {
-    if (!syllabusPreview) return;
+    if (!syllabusResult || !syllabusFile) return;
     setIsUploading(true);
     setUploadMessage(null);
     try {
-      const filePath = `syllabi/${Date.now()}-${syllabusPreview.filename}`;
-      const fileInput = document.getElementById("syllabus-input") as HTMLInputElement;
-      const file = fileInput.files?.[0];
-      if (!file) throw new Error("File not found");
-
-      const { error: uploadError } = await supabase.storage.from("syllabi").upload(filePath, file);
+      const filePath = `syllabi/${Date.now()}-${syllabusFile.name}`;
+      const { error: uploadError } = await supabase.storage.from("syllabi").upload(filePath, syllabusFile);
       if (uploadError) throw uploadError;
 
       const { data: fileData } = supabase.storage.from("syllabi").getPublicUrl(filePath);
       const fileUrl = fileData.publicUrl;
 
-      for (const classId of syllabusPreview.classIds) {
-        await syllabusFilesApi.create(classId, syllabusPreview.filename, fileUrl, file.size);
+      for (const classId of selectedClassesForSyllabus) {
+        await syllabusFilesApi.create(classId, syllabusFile.name, fileUrl, syllabusFile.size);
       }
 
-      setUploadMessage({ type: "success", text: `✓ Syllabus saved to ${syllabusPreview.classIds.length} class(es)` });
-      setUploadedSyllabi([...uploadedSyllabi, { name: syllabusPreview.filename, classes: syllabusPreview.classIds.length }]);
+      setUploadMessage({ type: "success", text: `✓ Syllabus saved to ${selectedClassesForSyllabus.length} class(es)` });
+      setUploadedSyllabi([...uploadedSyllabi, { name: syllabusFile.name, classes: selectedClassesForSyllabus.length }]);
       setSelectedClassesForSyllabus([]);
-      setSyllabusPreview(null);
+      setSyllabusResult(null);
+      setSyllabusFile(null);
     } catch (error) {
       console.error("Syllabus save failed:", error);
       setUploadMessage({ type: "error", text: `Save failed: ${error instanceof Error ? error.message : "Unknown error"}` });
@@ -314,56 +263,82 @@ function Uploads() {
         </div>
       )}
 
+      {extractionProgress && (
+        <div className="flex items-center gap-3 rounded-lg border-2 border-(--color-sky-500) bg-(--color-sky-100) p-4 text-(--color-sky-600)">
+          <Loader size={18} className="animate-spin" />
+          <p className="text-sm font-bold">{extractionProgress}</p>
+        </div>
+      )}
+
       <Card>
         <h2 className="font-display text-lg font-semibold text-(--color-ink)">Upload Timetable</h2>
-        <p className="mt-1 text-sm text-(--color-ink-muted)">Upload TXT, PDF, or image → converts to all classes</p>
+        <p className="mt-1 text-sm text-(--color-ink-muted)">Upload image/PDF → AI extracts schedule → review & approve</p>
 
-        {timetablePreview && (
-          <div className="mt-4 space-y-3 rounded-lg border-2 border-(--color-orange-500) bg-(--color-orange-100)/50 p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-bold text-(--color-ink)">File: {timetablePreview.filename}</p>
-                <p className="mt-1 text-sm text-(--color-ink-muted)">{timetablePreview.entries.length} periods found</p>
-              </div>
+        {timetableResult && (
+          <div className="mt-4 space-y-4 rounded-lg border-2 border-(--color-orange-500) bg-(--color-orange-100)/50 p-4">
+            <div>
+              <p className="font-bold text-(--color-ink)">File: {timetableFile?.name}</p>
+              <p className="mt-1 text-sm text-(--color-ink-muted)">
+                {(timetableResult.extracted_data as TimetableEntry[]).length} periods extracted · Confidence: {Math.round(timetableResult.extraction_confidence * 100)}%
+              </p>
             </div>
-            <div className="max-h-48 space-y-1 overflow-y-auto rounded bg-(--color-paper) p-2">
-              {timetablePreview.entries.map((entry, i) => (
-                <div key={i} className="flex justify-between px-2 py-1 text-sm text-(--color-ink)">
-                  <span className="font-medium">{entry.day}</span>
-                  <span>{entry.startTime} - {entry.endTime}</span>
+            {timetableResult.validation_warnings.length > 0 && (
+              <div className="rounded-lg border border-(--color-warning) bg-(--color-warning-100)/50 p-3">
+                <div className="flex gap-2 text-sm text-(--color-warning)">
+                  <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-bold mb-1">{timetableResult.validation_warnings.length} warning(s):</p>
+                    <ul className="text-xs space-y-0.5">
+                      {timetableResult.validation_warnings.slice(0, 3).map((w, i) => <li key={i}>• {w}</li>)}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            )}
+            <div className="max-h-64 space-y-2 overflow-y-auto rounded bg-(--color-paper) p-3">
+              {(timetableResult.extracted_data as TimetableEntry[]).map((entry, i) => (
+                <div key={i} className="flex items-center justify-between text-sm border-b border-(--color-border) pb-2 last:border-0">
+                  <div className="flex-1">
+                    <div className="font-medium text-(--color-ink)">{entry.day}</div>
+                    <div className="text-xs text-(--color-ink-muted)">{entry.start_time} - {entry.end_time}</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {entry.subject && <span className="text-xs bg-(--color-sky-100) text-(--color-sky-600) px-2 py-1 rounded">{entry.subject}</span>}
+                    {entry.confidence < 0.7 && <AlertTriangle size={14} className="text-(--color-warning)" />}
+                  </div>
                 </div>
               ))}
             </div>
             <div className="flex gap-2">
               <Button onClick={confirmTimetableUpload} disabled={isUploading} className="flex-1">
-                {isUploading ? "Saving..." : "✓ Confirm & Add"}
+                {isUploading ? "Saving..." : "✓ Approve & Save"}
               </Button>
-              <Button onClick={() => setTimetablePreview(null)} variant="ghost" disabled={isUploading}>
-                Cancel
+              <Button onClick={() => { setTimetableResult(null); setTimetableFile(null); }} variant="ghost" disabled={isUploading}>
+                Discard
               </Button>
             </div>
           </div>
         )}
 
-        {!timetablePreview && (
+        {!timetableResult && (
           <div className="mt-5 rounded-lg border-2 border-dashed border-(--color-border) p-8 text-center">
           <Upload size={32} className="mx-auto mb-3 text-(--color-orange-500)" />
-          <p className="mb-2 font-bold text-(--color-ink)">Drop timetable file or click to select</p>
-          <p className="mb-4 text-xs text-(--color-ink-muted)">Formats: TXT, PDF, JPG, PNG</p>
+          <p className="mb-2 font-bold text-(--color-ink)">Drop timetable image or click to select</p>
+          <p className="mb-4 text-xs text-(--color-ink-muted)">Formats: JPG, PNG, PDF (clear tables work best)</p>
           <input
             id="timetable-input"
             type="file"
-            accept=".txt,.pdf,.jpg,.jpeg,.png"
+            accept=".pdf,.jpg,.jpeg,.png"
             onChange={handleTimetableUpload}
-            disabled={isUploading}
+            disabled={isUploading || isExtracting}
             className="hidden"
           />
           <button
             onClick={() => document.getElementById("timetable-input")?.click()}
-            disabled={isUploading}
+            disabled={isUploading || isExtracting}
             className="rounded-lg border-2 border-(--color-border) bg-(--color-orange-500) px-4 py-2.5 text-sm font-bold text-(--color-ink-on-accent) transition-all hover:shadow-hard-sm disabled:opacity-50"
           >
-            {isUploading ? "Processing..." : "Select File"}
+            {isExtracting ? "Analyzing..." : "Select File"}
           </button>
           </div>
         )}
@@ -374,7 +349,8 @@ function Uploads() {
             <div className="mt-2 space-y-1">
               {uploadedTimetables.map((entry, i) => (
                 <p key={i} className="text-sm text-(--color-ink)">
-                  {entry.day} · {entry.startTime} - {entry.endTime}
+                  {entry.day} · {entry.start_time} - {entry.end_time}
+                  {entry.subject && <span className="text-(--color-ink-muted)"> ({entry.subject})</span>}
                 </p>
               ))}
             </div>
@@ -384,47 +360,67 @@ function Uploads() {
 
       <Card>
         <h2 className="font-display text-lg font-semibold text-(--color-ink)">Upload Syllabus</h2>
-        <p className="mt-1 text-sm text-(--color-ink-muted)">Upload PDF → add to classes → track progress per class</p>
+        <p className="mt-1 text-sm text-(--color-ink-muted)">Upload image/PDF → AI extracts structure → review & approve</p>
 
-        {syllabusPreview && (
-          <div className="mt-4 space-y-3 rounded-lg border-2 border-(--color-orange-500) bg-(--color-orange-100)/50 p-4">
+        {syllabusResult && (
+          <div className="mt-4 space-y-4 rounded-lg border-2 border-(--color-orange-500) bg-(--color-orange-100)/50 p-4">
             <div>
-              <p className="font-bold text-(--color-ink)">File: {syllabusPreview.filename}</p>
-              <p className="mt-1 text-sm text-(--color-ink-muted)">Adding to {syllabusPreview.classIds.length} class(es)</p>
+              <p className="font-bold text-(--color-ink)">File: {syllabusFile?.name}</p>
+              <p className="mt-1 text-sm text-(--color-ink-muted)">
+                {(syllabusResult.extracted_data as SyllabusSection[]).length} sections extracted · Confidence: {Math.round(syllabusResult.extraction_confidence * 100)}%
+              </p>
             </div>
-            <div>
-              <p className="text-xs font-bold uppercase text-(--color-ink-muted) mb-2">Classes</p>
-              <div className="rounded bg-(--color-paper) p-2">
-                <div className="space-y-1">
-                  {syllabusPreview.classIds.map((classId) => {
-                    const cls = classes.find((c) => c.id === classId);
-                    return cls ? <p key={classId} className="px-2 py-1 text-sm text-(--color-ink)">• {cls.name}</p> : null;
-                  })}
+            {syllabusResult.validation_warnings.length > 0 && (
+              <div className="rounded-lg border border-(--color-warning) bg-(--color-warning-100)/50 p-3">
+                <div className="flex gap-2 text-sm text-(--color-warning)">
+                  <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-bold mb-1">{syllabusResult.validation_warnings.length} warning(s):</p>
+                    <ul className="text-xs space-y-0.5">
+                      {syllabusResult.validation_warnings.slice(0, 2).map((w, i) => <li key={i}>• {w}</li>)}
+                    </ul>
+                  </div>
                 </div>
               </div>
+            )}
+            <div className="max-h-64 overflow-y-auto rounded bg-(--color-paper) p-3 space-y-2">
+              {(syllabusResult.extracted_data as SyllabusSection[]).length > 0 ? (
+                (syllabusResult.extracted_data as SyllabusSection[]).map((section, i) => (
+                  <div key={i} className="text-sm">
+                    <div className="font-bold text-(--color-ink) flex items-center gap-2">
+                      <ChevronRight size={14} />
+                      {section.name}
+                    </div>
+                    {section.topics && section.topics.length > 0 && (
+                      <div className="ml-5 mt-1 text-xs text-(--color-ink-muted) space-y-0.5">
+                        {section.topics.slice(0, 3).map((t, j) => (
+                          <div key={j}>• {t.name}</div>
+                        ))}
+                        {section.topics.length > 3 && <div className="text-xs italic">+{section.topics.length - 3} more</div>}
+                      </div>
+                    )}
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-(--color-ink-muted)">No sections detected</p>
+              )}
             </div>
-            <div>
-              <p className="text-xs font-bold uppercase text-(--color-ink-muted) mb-2">Chapters/Sections</p>
-              <div className="rounded bg-(--color-paper) p-2 max-h-32 overflow-y-auto">
-                <div className="space-y-1">
-                  {syllabusPreview.chapters.map((chapter, i) => (
-                    <p key={i} className="px-2 py-1 text-xs text-(--color-ink)">• {chapter}</p>
-                  ))}
-                </div>
-              </div>
+            <div className="rounded-lg bg-(--color-surface) p-2">
+              <p className="text-xs font-bold text-(--color-ink-muted) mb-1">Adding to:</p>
+              <p className="text-sm text-(--color-ink)">{selectedClassesForSyllabus.length} class(es)</p>
             </div>
             <div className="flex gap-2">
               <Button onClick={confirmSyllabusUpload} disabled={isUploading} className="flex-1">
-                {isUploading ? "Saving..." : "✓ Confirm & Add"}
+                {isUploading ? "Saving..." : "✓ Approve & Save"}
               </Button>
-              <Button onClick={() => setSyllabusPreview(null)} variant="ghost" disabled={isUploading}>
-                Cancel
+              <Button onClick={() => { setSyllabusResult(null); setSyllabusFile(null); }} variant="ghost" disabled={isUploading}>
+                Discard
               </Button>
             </div>
           </div>
         )}
 
-        {!syllabusPreview && (
+        {!syllabusResult && (
           <>
             <div className="mt-4">
               <label className="mb-3 block text-sm font-bold text-(--color-ink)">Select Classes to Add</label>
@@ -452,22 +448,22 @@ function Uploads() {
         </div>
         <div className="mt-5 rounded-lg border-2 border-dashed border-(--color-border) p-8 text-center">
           <FileText size={32} className="mx-auto mb-3 text-(--color-orange-500)" />
-          <p className="mb-2 font-bold text-(--color-ink)">Drop syllabus PDF or click to select</p>
-          <p className="mb-4 text-xs text-(--color-ink-muted)">Progress tracked for each class individually</p>
+          <p className="mb-2 font-bold text-(--color-ink)">Drop syllabus image or click to select</p>
+          <p className="mb-4 text-xs text-(--color-ink-muted)">Upload image or PDF screenshot for best results</p>
           <input
             id="syllabus-input"
             type="file"
-            accept=".pdf"
+            accept=".pdf,.jpg,.jpeg,.png"
             onChange={handleSyllabusUpload}
-            disabled={isUploading || selectedClassesForSyllabus.length === 0}
+            disabled={isUploading || isExtracting || selectedClassesForSyllabus.length === 0}
             className="hidden"
           />
           <button
             onClick={() => document.getElementById("syllabus-input")?.click()}
-            disabled={isUploading || selectedClassesForSyllabus.length === 0}
+            disabled={isUploading || isExtracting || selectedClassesForSyllabus.length === 0}
             className="rounded-lg border-2 border-(--color-border) bg-(--color-orange-500) px-4 py-2.5 text-sm font-bold text-(--color-ink-on-accent) transition-all hover:shadow-hard-sm disabled:opacity-50"
           >
-            {isUploading ? "Uploading..." : "Select PDF"}
+            {isExtracting ? "Analyzing..." : "Select File"}
           </button>
           </div>
           </>
