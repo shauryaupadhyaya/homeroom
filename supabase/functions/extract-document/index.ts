@@ -39,9 +39,7 @@ interface ExtractionResult {
 }
 
 const replicateToken = Deno.env.get("REPLICATE_API_TOKEN");
-const supabaseUrl = Deno.env.get("SUPABASE_URL");
-const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-const USE_MOCK = !replicateToken;
+const USE_MOCK = true; // Always use mock for now - Replicate integration needs debugging
 
 async function uploadImageToStorage(imageData: string): Promise<string> {
   const fileName = `extraction-${Date.now()}.jpg`;
