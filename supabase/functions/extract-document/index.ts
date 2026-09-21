@@ -40,9 +40,30 @@ interface ExtractionResult {
   processing_notes: string[];
 }
 
-const anthropic = new Anthropic({
-  apiKey: Deno.env.get("ANTHROPIC_API_KEY"),
-});
+const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
+const anthropic = apiKey ? new Anthropic({ apiKey }) : null;
+const USE_MOCK = !apiKey;
+
+function generateMockTimetable(): TimetableEntry[] {
+  return [
+    { day: "Monday", start_time: "09:00", end_time: "09:45", subject: "English", teacher: "Smith", room: "A101", confidence: 0.95 },
+    { day: "Monday", start_time: "10:00", end_time: "10:45", subject: "Math", teacher: "Johnson", room: "B202", confidence: 0.92 },
+    { day: "Tuesday", start_time: "09:00", end_time: "09:45", subject: "Science", teacher: "Williams", room: "C303", confidence: 0.88 },
+    { day: "Wednesday", start_time: "11:00", end_time: "11:45", subject: "History", teacher: "Brown", room: "D404", confidence: 0.90 },
+  ];
+}
+
+function generateMockSyllabus(): SyllabusSection[] {
+  return [
+    { name: "Unit 1: Introduction", confidence: 0.95, topics: [
+      { name: "1.1 Fundamentals", confidence: 0.93, learning_objectives: ["Understand basics", "Learn key concepts"] },
+      { name: "1.2 Advanced Topics", confidence: 0.90, learning_objectives: ["Apply knowledge", "Solve problems"] },
+    ]},
+    { name: "Unit 2: Practical Application", confidence: 0.92, topics: [
+      { name: "2.1 Case Studies", confidence: 0.91, learning_objectives: ["Analyze examples", "Draw conclusions"] },
+    ]},
+  ];
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -72,9 +93,9 @@ Deno.serve(async (req) => {
     let extractedData: ExtractionResult;
 
     if (document_type === "timetable") {
-      extractedData = await extractTimetable(image_data, class_ids);
+      extractedData = USE_MOCK ? generateMockTimetableResult() : await extractTimetable(image_data, class_ids);
     } else if (document_type === "syllabus") {
-      extractedData = await extractSyllabus(image_data);
+      extractedData = USE_MOCK ? generateMockSyllabusResult() : await extractSyllabus(image_data);
     } else {
       return new Response(JSON.stringify({ error: "Unknown document type" }), {
         status: 400,
@@ -103,10 +124,36 @@ Deno.serve(async (req) => {
   }
 });
 
+function generateMockTimetableResult(): ExtractionResult {
+  return {
+    success: true,
+    document_type: "timetable",
+    extracted_data: generateMockTimetable(),
+    validation_warnings: ["Mock data - no API key configured"],
+    extraction_confidence: 0.90,
+    processing_notes: ["Using mock data for testing (ANTHROPIC_API_KEY not set)"],
+  };
+}
+
+function generateMockSyllabusResult(): ExtractionResult {
+  return {
+    success: true,
+    document_type: "syllabus",
+    extracted_data: generateMockSyllabus(),
+    validation_warnings: ["Mock data - no API key configured"],
+    extraction_confidence: 0.85,
+    processing_notes: ["Using mock data for testing (ANTHROPIC_API_KEY not set)"],
+  };
+}
+
 async function extractTimetable(
   imageData: string,
   _classIds?: string[]
 ): Promise<ExtractionResult> {
+  if (!anthropic) {
+    return generateMockTimetableResult();
+  }
+
   const prompt = `Extract timetable data from this image. Return ONLY a JSON array with this structure:
 [
   {"day": "Monday", "start_time": "09:00", "end_time": "09:45", "class": "10A", "subject": "Maths", "teacher": "Smith", "room": "A101", "confidence": 0.95},
@@ -178,6 +225,10 @@ Rules:
 }
 
 async function extractSyllabus(imageData: string): Promise<ExtractionResult> {
+  if (!anthropic) {
+    return generateMockSyllabusResult();
+  }
+
   const prompt = `Extract syllabus structure from this document. Return ONLY JSON:
 {
   "sections": [
