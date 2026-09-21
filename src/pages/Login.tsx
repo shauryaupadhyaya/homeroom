@@ -1,7 +1,8 @@
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { NotebookPen, Sparkles, HeartPulse, TrendingUp, AlertCircle, ArrowRight, Eye, EyeOff } from "lucide-react";
 import { useApp } from "../lib/store";
+import { supabase } from "../lib/supabase";
 import { Button } from "../components/ui";
 
 const pillars = [
@@ -28,33 +29,77 @@ export function Login() {
   const { login } = useApp();
   const navigate = useNavigate();
   const [mode, setMode] = useState<Mode>("signin");
-  const [email, setEmail] = useState("john.smith@school.com");
+  const [email, setEmail] = useState("demo@homeroom.edu");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
-  function handleSubmit(e: FormEvent) {
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          login();
+          navigate("/");
+        }
+      } finally {
+        setIsCheckingAuth(false);
+      }
+    };
+    checkAuth();
+  }, [login, navigate]);
+
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!email.trim() || !/\S+@\S+\.\S+/.test(email)) {
-      setError("Enter a valid email address to continue.");
+      setError("Enter a valid email address.");
       return;
     }
-    if (!password) {
-      setError(
-        mode === "signin"
-          ? "Enter your password, or use the Forgot password link below to reset it."
-          : "Choose a password with at least 8 characters."
-      );
+    if (!password || password.length < 6) {
+      setError(mode === "signin" ? "Enter your password." : "Password must be at least 6 characters.");
       return;
     }
+
     setError(null);
-    login();
-    navigate("/");
+    setLoading(true);
+
+    try {
+      if (mode === "signin") {
+        const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+        if (signInError) throw signInError;
+      } else {
+        const { error: signUpError } = await supabase.auth.signUp({ email, password });
+        if (signUpError) throw signUpError;
+        setMode("signin");
+        setPassword("");
+        alert("Account created! Please sign in.");
+        return;
+      }
+
+      login();
+      navigate("/");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Authentication failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (isCheckingAuth) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gradient-to-br from-orange-50 to-orange-100">
+        <div className="text-center">
+          <div className="mb-4 text-4xl">🏠</div>
+          <p className="text-gray-600">Loading Homeroom...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
     <div className="grid min-h-screen grid-cols-1 lg:grid-cols-[1.05fr_1fr]">
-      {/* Brand panel */}
       <div className="dot-grid relative hidden flex-col justify-between overflow-hidden bg-(--color-ink) px-12 py-10 lg:flex">
         <div className="absolute inset-0 bg-gradient-to-br from-(--color-ink) via-(--color-ink)/95 to-(--color-orange-600)/30" />
         <div className="relative flex items-center gap-2">
@@ -87,105 +132,101 @@ export function Login() {
           </div>
         </div>
 
-        <p className="relative text-xs font-semibold text-(--color-paper)/40">
-          Staff access only.
-        </p>
+        <p className="relative text-xs text-(--color-paper)/40">Staff access only.</p>
       </div>
 
-      {/* Auth form */}
-      <div className="flex items-center justify-center bg-(--color-paper) px-6 py-12">
-        <div className="w-full max-w-sm rounded-(--radius-card) border-[3px] border-(--color-border) bg-(--color-surface) p-7 shadow-hard-lg">
-          <div className="mb-8 flex items-center gap-2 lg:hidden">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg border-2 border-(--color-border) bg-(--color-orange-500) text-(--color-ink-on-accent)">
-              <NotebookPen size={16} strokeWidth={2.5} />
-            </div>
-            <span className="font-display text-lg font-bold">Homeroom</span>
+      <div className="flex items-center justify-center bg-(--color-paper) px-6 py-10 sm:px-10">
+        <div className="w-full max-w-sm space-y-8">
+          <div className="space-y-2">
+            <h2 className="font-display text-3xl font-bold text-(--color-ink)">
+              {mode === "signin" ? "Welcome back" : "Create account"}
+            </h2>
+            <p className="text-sm text-(--color-ink)/60">
+              {mode === "signin" ? "Sign in with your school email." : "Set up your Homeroom account"}
+            </p>
           </div>
 
-          <div className="mb-6 flex rounded-lg border-2 border-(--color-border) bg-(--color-paper-dim) p-1">
-            <button
-              onClick={() => setMode("signin")}
-              className={`flex-1 rounded-md py-2 text-sm font-bold transition-colors ${
-                mode === "signin" ? "bg-(--color-surface) text-(--color-ink)" : "text-(--color-ink-muted)"
-              }`}
-            >
-              Sign in
-            </button>
-            <button
-              onClick={() => setMode("signup")}
-              className={`flex-1 rounded-md py-2 text-sm font-bold transition-colors ${
-                mode === "signup" ? "bg-(--color-surface) text-(--color-ink)" : "text-(--color-ink-muted)"
-              }`}
-            >
-              Sign up
-            </button>
-          </div>
-
-          <h2 className="font-display text-2xl font-bold text-(--color-ink)">
-            {mode === "signin" ? "Welcome back" : "Create your account"}
-          </h2>
-          <p className="mt-1 text-sm font-medium text-(--color-ink-muted)">
-            {mode === "signin"
-              ? "Sign in with your school email to open your timetable."
-              : "Set up your teacher account to start building lessons."}
-          </p>
-
-          <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
-            {error && (
-              <div className="flex items-start gap-2 rounded-lg border-2 border-(--color-border) bg-(--color-danger-100) px-3 py-2.5 text-sm font-semibold text-(--color-danger)">
-                <AlertCircle size={16} className="mt-0.5 shrink-0" />
-                <span>{error}</span>
-              </div>
-            )}
-
-            <label className="flex flex-col gap-1.5 text-sm font-bold text-(--color-ink)">
-              Email
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div>
+              <label className="block text-sm font-semibold text-(--color-ink) mb-2">Email</label>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@school.edu"
-                className="rounded-lg border-2 border-(--color-border) bg-(--color-surface) px-3.5 py-2.5 text-sm font-medium text-(--color-ink) outline-none placeholder:text-(--color-ink-muted) focus:ring-2 focus:ring-(--color-sky-500)/30"
+                className="w-full rounded-lg border-2 border-(--color-ink)/10 px-4 py-3 focus:border-(--color-orange-500) focus:outline-none"
+                placeholder="your.email@school.com"
+                disabled={loading}
               />
-            </label>
+            </div>
 
-            <label className="flex flex-col gap-1.5 text-sm font-bold text-(--color-ink)">
-              Password
+            <div>
+              <label className="block text-sm font-semibold text-(--color-ink) mb-2">Password</label>
               <div className="relative">
                 <input
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full rounded-lg border-2 border-(--color-border) bg-(--color-surface) px-3.5 py-2.5 pr-10 text-sm font-medium text-(--color-ink) outline-none placeholder:text-(--color-ink-muted) focus:ring-2 focus:ring-(--color-sky-500)/30"
+                  className="w-full rounded-lg border-2 border-(--color-ink)/10 px-4 py-3 focus:border-(--color-orange-500) focus:outline-none pr-10"
+                  placeholder={mode === "signin" ? "Enter your password" : "At least 6 characters"}
+                  disabled={loading}
                 />
                 <button
                   type="button"
-                  onClick={() => setShowPassword((v) => !v)}
-                  title={showPassword ? "Hide password" : "Show password"}
-                  aria-label={showPassword ? "Hide password" : "Show password"}
-                  className="absolute right-0 top-0 flex h-full w-10 items-center justify-center text-(--color-ink-muted) hover:text-(--color-ink)"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-(--color-ink)/40"
                 >
-                  {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
-            </label>
+            </div>
 
-            {mode === "signin" && (
-              <button type="button" className="self-end text-xs font-bold text-(--color-sky-600) hover:underline">
-                Forgot password?
-              </button>
+            {error && (
+              <div className="flex gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+                <AlertCircle size={16} className="shrink-0 mt-0.5" />
+                <span>{error}</span>
+              </div>
             )}
 
-            <Button type="submit" size="lg" className="mt-1 justify-between">
-              {mode === "signin" ? "Sign in" : "Create account"}
-              <ArrowRight size={16} />
+            <Button
+              type="submit"
+              disabled={loading}
+              className="w-full flex justify-center items-center gap-2 bg-(--color-orange-500) text-(--color-ink-on-accent) font-semibold py-3 rounded-lg"
+            >
+              {loading ? "Loading..." : mode === "signin" ? "Sign in" : "Create account"}
+              {!loading && <ArrowRight size={16} />}
             </Button>
           </form>
 
-          <p className="mt-6 text-center text-xs font-medium text-(--color-ink-muted)">
-            Every class, student, and score is scoped to your account. Nobody else can see or edit your data.
-          </p>
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-(--color-ink)/10" />
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="bg-(--color-paper) px-2 text-(--color-ink)/60">
+                {mode === "signin" ? "New here?" : "Have an account?"}
+              </span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setMode(mode === "signin" ? "signup" : "signin");
+              setError(null);
+              setPassword("");
+            }}
+            className="w-full py-2 text-(--color-orange-600) font-semibold"
+          >
+            {mode === "signin" ? "Create an account" : "Sign in instead"}
+          </button>
+
+          {mode === "signin" && (
+            <div className="mt-6 rounded-lg bg-blue-50 p-4 text-sm text-blue-700">
+              <p className="font-semibold mb-2">✨ Demo Account:</p>
+              <p><code className="bg-white px-2 py-1 rounded">demo@homeroom.edu</code></p>
+              <p><code className="bg-white px-2 py-1 rounded">demo123</code></p>
+            </div>
+          )}
         </div>
       </div>
     </div>
