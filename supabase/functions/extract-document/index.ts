@@ -97,22 +97,18 @@ function generateMockTimetable(): TimetableEntry[] {
 
 function generateMockSyllabus(): SyllabusSection[] {
   return [
-    {
-      name: "Unit 1: Introduction",
-      confidence: 0.95,
-      topics: [
-        { name: "1.1 Fundamentals", confidence: 0.93, learning_objectives: ["Understand basics", "Learn key concepts"] },
-        { name: "1.2 Advanced Topics", confidence: 0.90, learning_objectives: ["Apply knowledge", "Solve problems"] },
-      ]
-    },
-    {
-      name: "Unit 2: Practical Application",
-      confidence: 0.92,
-      topics: [
-        { name: "2.1 Case Studies", confidence: 0.91, learning_objectives: ["Analyze examples", "Draw conclusions"] },
-        { name: "2.2 Exercises", confidence: 0.88, learning_objectives: ["Practice skills", "Build confidence"] },
-      ]
-    },
+    { name: "1. States of Matter", confidence: 0.95, learning_objectives: ["Understand physical states", "Describe properties"] },
+    { name: "2. Atomic Structure and the Periodic Table", confidence: 0.94, learning_objectives: ["Know atomic structure", "Understand periodic trends"] },
+    { name: "3. Ions and Bonding", confidence: 0.93, learning_objectives: ["Distinguish ionic vs covalent", "Predict bonding types"] },
+    { name: "4. Stoichiometry and Calculations", confidence: 0.92, learning_objectives: ["Calculate molar masses", "Balance equations"] },
+    { name: "5. Electrolysis", confidence: 0.91, learning_objectives: ["Understand electrode reactions", "Apply Faraday's laws"] },
+    { name: "6. Chemical Changes", confidence: 0.90, learning_objectives: ["Explain reaction types", "Describe energy changes"] },
+    { name: "7. Reaction Kinetics and Equilibrium", confidence: 0.89, learning_objectives: ["Calculate reaction rates", "Apply equilibrium concepts"] },
+    { name: "8. Acid-Base Chemistry", confidence: 0.91, learning_objectives: ["Understand pH", "Perform titrations"] },
+    { name: "9. The Periodic Table and Groups", confidence: 0.88, learning_objectives: ["Compare group properties", "Predict reactivity"] },
+    { name: "10. Metals and Non-metals", confidence: 0.87, learning_objectives: ["Compare properties", "Describe extraction"] },
+    { name: "11. Organic Chemistry Basics", confidence: 0.86, learning_objectives: ["Name organic compounds", "Identify functional groups"] },
+    { name: "12. Air Quality and Climate", confidence: 0.85, learning_objectives: ["Understand atmosphere", "Analyze climate impacts"] },
   ];
 }
 

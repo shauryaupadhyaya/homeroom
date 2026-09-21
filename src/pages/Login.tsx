@@ -222,9 +222,8 @@ export function Login() {
 
           {mode === "signin" && (
             <div className="mt-6 rounded-lg bg-blue-50 p-4 text-sm text-blue-700">
-              <p className="font-semibold mb-2">✨ Demo Account:</p>
-              <p><code className="bg-white px-2 py-1 rounded">teacher123@test.com</code></p>
-              <p><code className="bg-white px-2 py-1 rounded">demo123</code></p>
+              <p className="font-semibold mb-2">ℹ️ Demo Access</p>
+              <p className="text-xs">Contact your administrator for demo account credentials</p>
             </div>
           )}
         </div>
