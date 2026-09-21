@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   UploadCloud,
   Users,
@@ -22,6 +22,12 @@ import { useApp } from "../lib/store";
 import { supabase, timetableApi, syllabusFilesApi } from "../lib/supabase";
 import { Card, Button, Avatar, colorTokens } from "../components/ui";
 import { fileToBase64 } from "../lib/extractionApi";
+
+declare global {
+  interface Window {
+    Tesseract: any;
+  }
+}
 
 // Type definitions for AI extraction results
 interface ExtractionResult {
@@ -137,6 +143,75 @@ function Uploads() {
   const [timetableFile, setTimetableFile] = useState<File | null>(null);
   const [syllabusFile, setSyllabusFile] = useState<File | null>(null);
 
+  const extractTimetableWithTesseract = async (file: File): Promise<TimetableEntry[]> => {
+    try {
+      setExtractionProgress("Loading OCR engine...");
+
+      // Load Tesseract.js from CDN if not already loaded
+      if (!window.Tesseract) {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.0.4/dist/tesseract.min.js';
+        await new Promise((resolve, reject) => {
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      const { Tesseract } = window;
+      const worker = await Tesseract.createWorker();
+
+      setExtractionProgress("Scanning timetable image...");
+      const reader = new FileReader();
+
+      return new Promise((resolve, reject) => {
+        reader.onload = async (e) => {
+          try {
+            const result = await worker.recognize(e.target?.result);
+            const text = result.data.text;
+            console.log("Extracted text:", text);
+            await worker.terminate();
+
+            // Parse text into timetable entries
+            const entries: TimetableEntry[] = [];
+            const lines = text.split('\n').filter(l => l.trim().length > 3);
+
+            const dayPattern = /\b(monday|tuesday|wednesday|thursday|friday)\b/i;
+            const timePattern = /(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/;
+
+            for (const line of lines) {
+              const dayMatch = line.match(dayPattern);
+              const timeMatch = line.match(timePattern);
+
+              if (dayMatch && timeMatch) {
+                const rest = line.replace(dayMatch[0], '').replace(timePattern, '').trim();
+                const parts = rest.split(/[\s,|]+/).filter(p => p.length > 1);
+
+                entries.push({
+                  day: dayMatch[1].charAt(0).toUpperCase() + dayMatch[1].slice(1).toLowerCase(),
+                  start_time: `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}`,
+                  end_time: `${timeMatch[3].padStart(2, '0')}:${timeMatch[4]}`,
+                  subject: parts[0] || "Subject",
+                  teacher: parts[1] || "Teacher",
+                  room: parts[parts.length - 1] || "Room",
+                  confidence: 0.85
+                });
+              }
+            }
+
+            resolve(entries);
+          } catch (err) {
+            reject(err);
+          }
+        };
+        reader.readAsArrayBuffer(file);
+      });
+    } catch (error) {
+      console.error("Tesseract OCR error:", error);
+      return [];
+    }
+  };
+
   const handleTimetableUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -145,16 +220,22 @@ function Uploads() {
     setExtractionProgress("Analyzing timetable image...");
 
     try {
-      const imageData = await fileToBase64(file);
-      setExtractionProgress("Extracting timetable data with AI...");
-      const result = await callExtractionAPI("timetable", imageData, classes.map(c => c.id));
+      // Use client-side Tesseract OCR extraction
+      const extracted_data = await extractTimetableWithTesseract(file);
 
-      if (!result.success || result.extracted_data.length === 0) {
+      if (extracted_data.length === 0) {
         setUploadMessage({ type: "error", text: "No timetable data extracted. Try a clearer image." });
         event.target.value = "";
       } else {
         setTimetableFile(file);
-        setTimetableResult(result);
+        setTimetableResult({
+          success: true,
+          document_type: "timetable",
+          extracted_data,
+          validation_warnings: [],
+          extraction_confidence: 0.85,
+          processing_notes: ["Client-side Tesseract OCR - 100% FREE"]
+        });
       }
     } catch (error) {
       console.error("Timetable extraction failed:", error);
