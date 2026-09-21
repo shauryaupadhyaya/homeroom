@@ -29,7 +29,7 @@ export function Login() {
   const { login } = useApp();
   const navigate = useNavigate();
   const [mode, setMode] = useState<Mode>("signin");
-  const [email, setEmail] = useState("demo@homeroom.edu");
+  const [email, setEmail] = useState("teacher123@test.com");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -223,7 +223,7 @@ export function Login() {
           {mode === "signin" && (
             <div className="mt-6 rounded-lg bg-blue-50 p-4 text-sm text-blue-700">
               <p className="font-semibold mb-2">✨ Demo Account:</p>
-              <p><code className="bg-white px-2 py-1 rounded">demo@homeroom.edu</code></p>
+              <p><code className="bg-white px-2 py-1 rounded">teacher123@test.com</code></p>
               <p><code className="bg-white px-2 py-1 rounded">demo123</code></p>
             </div>
           )}
