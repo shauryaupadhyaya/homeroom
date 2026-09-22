@@ -18,43 +18,63 @@ interface SyllabusItem {
 export function Syllabus() {
   const { classes } = useApp();
   const [selectedClassId, setSelectedClassId] = useState<string | null>(classes[0]?.id || null);
-  const [syllabusItems, setSyllabusItems] = useState<SyllabusItem[]>([
-    {
-      id: "s1",
-      classId: "c1",
-      topic: "Map Skills",
-      subtopic: "Reading and interpreting maps",
-      status: "completed",
-      dateStarted: "2025-01-06",
-      dateCompleted: "2025-01-10",
-      lessonsUsed: ["lesson-1", "lesson-2"],
-    },
-    {
-      id: "s2",
-      classId: "c1",
-      topic: "Geographical Features",
-      subtopic: "Mountains, rivers, and plateaus",
-      status: "in-progress",
-      dateStarted: "2025-01-13",
-      lessonsUsed: ["lesson-3"],
-    },
-    {
-      id: "s3",
-      classId: "c1",
-      topic: "Climate Zones",
-      status: "pending",
-      lessonsUsed: [],
-    },
-    {
-      id: "s4",
-      classId: "c2",
-      topic: "Periodic Table",
-      status: "completed",
-      dateStarted: "2025-01-05",
-      dateCompleted: "2025-01-12",
-      lessonsUsed: ["lesson-1", "lesson-2", "lesson-3"],
-    },
-  ]);
+
+  const loadExtractedSyllabus = () => {
+    try {
+      const extracted = JSON.parse(localStorage.getItem("homeroom-extracted-syllabus") || "[]");
+      return extracted.map((ch: any) => ({
+        id: ch.id,
+        classId: ch.classIds?.[0] || "c1",
+        topic: ch.topic,
+        status: ch.status || "pending",
+        lessonsUsed: [],
+        notes: ch.objectives?.join("; ") || ""
+      }));
+    } catch (e) {
+      return [];
+    }
+  };
+
+  const [syllabusItems, setSyllabusItems] = useState<SyllabusItem[]>(() => {
+    const mockItems = [
+      {
+        id: "s1",
+        classId: "c1",
+        topic: "Map Skills",
+        subtopic: "Reading and interpreting maps",
+        status: "completed" as const,
+        dateStarted: "2025-01-06",
+        dateCompleted: "2025-01-10",
+        lessonsUsed: ["lesson-1", "lesson-2"],
+      },
+      {
+        id: "s2",
+        classId: "c1",
+        topic: "Geographical Features",
+        subtopic: "Mountains, rivers, and plateaus",
+        status: "in-progress" as const,
+        dateStarted: "2025-01-13",
+        lessonsUsed: ["lesson-3"],
+      },
+      {
+        id: "s3",
+        classId: "c1",
+        topic: "Climate Zones",
+        status: "pending" as const,
+        lessonsUsed: [],
+      },
+      {
+        id: "s4",
+        classId: "c2",
+        topic: "Periodic Table",
+        status: "completed" as const,
+        dateStarted: "2025-01-05",
+        dateCompleted: "2025-01-12",
+        lessonsUsed: ["lesson-1", "lesson-2", "lesson-3"],
+      },
+    ];
+    return [...mockItems, ...loadExtractedSyllabus()];
+  });
   const [newTopic, setNewTopic] = useState("");
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 

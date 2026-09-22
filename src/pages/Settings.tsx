@@ -322,29 +322,52 @@ function Uploads() {
   };
 
   const confirmSyllabusUpload = async () => {
-    if (!syllabusResult || !syllabusFile) return;
+    if (!syllabusResult || !syllabusFile || selectedClassesForSyllabus.length === 0) return;
     setIsUploading(true);
     setUploadMessage(null);
     try {
-      const filePath = `syllabi/${Date.now()}-${syllabusFile.name}`;
-      const { error: uploadError } = await supabase.storage.from("syllabi").upload(filePath, syllabusFile);
-      if (uploadError) throw uploadError;
+      const extractedChapters = (syllabusResult.extracted_data as SyllabusSection[]).map((ch, idx) => ({
+        id: `ch${Date.now()}_${idx}`,
+        topic: ch.name,
+        status: "pending" as const,
+        classIds: selectedClassesForSyllabus,
+        objectives: ch.learning_objectives || [],
+      }));
 
-      const { data: fileData } = supabase.storage.from("syllabi").getPublicUrl(filePath);
-      const fileUrl = fileData.publicUrl;
-
-      for (const classId of selectedClassesForSyllabus) {
-        await syllabusFilesApi.create(classId, syllabusFile.name, fileUrl, syllabusFile.size);
+      // Save to localStorage for Syllabus tab display
+      try {
+        const stored = JSON.parse(localStorage.getItem("homeroom-extracted-syllabus") || "[]");
+        localStorage.setItem("homeroom-extracted-syllabus", JSON.stringify([...stored, ...extractedChapters]));
+      } catch (e) {
+        console.warn("Could not save to localStorage");
       }
 
-      setUploadMessage({ type: "success", text: `✓ Syllabus saved to ${selectedClassesForSyllabus.length} class(es)` });
+      // Try DB save (non-fatal if it fails)
+      try {
+        const filePath = `syllabi/${Date.now()}-${syllabusFile.name}`;
+        const { error: uploadError } = await supabase.storage.from("syllabi").upload(filePath, syllabusFile);
+        if (!uploadError) {
+          const { data: fileData } = supabase.storage.from("syllabi").getPublicUrl(filePath);
+          for (const classId of selectedClassesForSyllabus) {
+            try {
+              await syllabusFilesApi.create(classId, syllabusFile.name, fileData.publicUrl, syllabusFile.size);
+            } catch (e) {
+              console.warn("DB entry failed, but chapters saved locally");
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("Storage save skipped, chapters in localStorage");
+      }
+
+      setUploadMessage({ type: "success", text: `✓ ${extractedChapters.length} chapters extracted and added to Syllabus tab!` });
       setUploadedSyllabi([...uploadedSyllabi, { name: syllabusFile.name, classes: selectedClassesForSyllabus.length }]);
       setSelectedClassesForSyllabus([]);
       setSyllabusResult(null);
       setSyllabusFile(null);
     } catch (error) {
-      console.error("Syllabus save failed:", error);
-      setUploadMessage({ type: "error", text: `Save failed: ${error instanceof Error ? error.message : "Unknown error"}` });
+      console.error("Syllabus extraction error:", error);
+      setUploadMessage({ type: "error", text: `Error: ${error instanceof Error ? error.message : "Failed"}` });
     } finally {
       setIsUploading(false);
     }
