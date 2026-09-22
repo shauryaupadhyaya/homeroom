@@ -151,9 +151,10 @@ export const timetableApi = {
   },
 
   create: async (classId: string, dayOfWeek: string, startTime: string, endTime: string, room?: string) => {
+    const uniqueId = `t${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const { data, error } = await supabase
       .from("timetable")
-      .insert([{ id: `t${Date.now()}`, class_id: classId, day_of_week: dayOfWeek, start_time: startTime, end_time: endTime, room }])
+      .upsert([{ id: uniqueId, class_id: classId, day_of_week: dayOfWeek, start_time: startTime, end_time: endTime, room }], { onConflict: "id" })
       .select()
       .single();
     if (error) throw error;
@@ -178,9 +179,10 @@ export const syllabusFilesApi = {
   },
 
   create: async (classId: string, filename: string, fileUrl: string, fileSize?: number, uploadedBy?: string) => {
+    const uniqueId = `sf${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const { data, error } = await supabase
       .from("syllabus_files")
-      .insert([{ id: `sf${Date.now()}`, class_id: classId, filename, file_url: fileUrl, file_size: fileSize, uploaded_by: uploadedBy }])
+      .upsert([{ id: uniqueId, class_id: classId, filename, file_url: fileUrl, file_size: fileSize, uploaded_by: uploadedBy }], { onConflict: "id" })
       .select()
       .single();
     if (error) throw error;
