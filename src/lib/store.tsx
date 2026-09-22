@@ -133,7 +133,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     () => ({
       isAuthed,
       login: () => setAuthed(true),
-      logout: () => setAuthed(false),
+      logout: async () => {
+        await supabase.auth.signOut();
+        setAuthed(false);
+      },
 
       theme,
       setTheme: setThemeState,

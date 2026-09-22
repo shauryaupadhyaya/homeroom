@@ -97,9 +97,9 @@ export function TopBar() {
             <div className="h-[2px] bg-(--color-border)" />
             <button
               role="menuitem"
-              onClick={() => {
+              onClick={async () => {
                 setMenuOpen(false);
-                logout();
+                await logout();
                 localStorage.setItem("homeroom-isAuthed", "false");
                 window.location.href = "/login";
               }}
