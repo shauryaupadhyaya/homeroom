@@ -100,7 +100,8 @@ export function TopBar() {
               onClick={() => {
                 setMenuOpen(false);
                 logout();
-                navigate("/login");
+                localStorage.setItem("homeroom-isAuthed", "false");
+                window.location.href = "/login";
               }}
               className="flex w-full items-center gap-2.5 px-4 py-3 text-left text-sm font-bold text-(--color-danger) hover:bg-(--color-danger-100)"
             >
