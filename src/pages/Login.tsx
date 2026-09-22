@@ -219,13 +219,6 @@ export function Login() {
           >
             {mode === "signin" ? "Create an account" : "Sign in instead"}
           </button>
-
-          {mode === "signin" && (
-            <div className="mt-6 rounded-lg bg-blue-50 p-4 text-sm text-blue-700">
-              <p className="font-semibold mb-2">ℹ️ Demo Access</p>
-              <p className="text-xs">Contact your administrator for demo account credentials</p>
-            </div>
-          )}
         </div>
       </div>
     </div>
